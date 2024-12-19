@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210407.020"
+#define version_string "version 20210407.021"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -23,11 +23,19 @@
 #define SoundFX_Active 15
 
 // lights
-#define light_demat_bottom 38
-#define light_demat_middle 40
-#define light_demat_top 42
-#define light_panel_A_red 44
-#define light_panel_A_green 46
+
+#define light_demat_top 23
+#define light_demat_middle 25
+#define light_demat_bottom 27
+
+#define light_panel_A_red 29
+#define light_panel_A_green 31
+
+#define light_panel_A_warning 35
+
+// note: big square button's light is 12v; we can't drive it directly.
+// someday we might add a transistor but it's just disconnected for now.
+//#define light_plinth_big_square_button __
 
 // switches
 #define switch_demat_lever 50
@@ -35,6 +43,8 @@
 #define switch_major_mode 48
 #define switch_lockout_key 39
 #define switch_fast_return 43
+
+#define switch_plinth_big_square_button 33
 
 // switch sources (some switches connect to adjacent pins rather than to a bus)
 #define switch_source_demat_lever 51
@@ -166,6 +176,8 @@ typedef struct {
   Control demat_lever;
   Control lockout_key;
   Control fast_return;
+  Control big_square_button;
+  Control speed_knob;
 } Tardis;
 
 Tardis TARDIS = {
@@ -175,8 +187,9 @@ Tardis TARDIS = {
   .door_lever = { .value = -1, .changed = false },
   .demat_lever = { .value = -1, .changed = false },
   .lockout_key = { .value = -1, .changed = false },
-  .fast_return = { .value = -1, .changed = false }
-  
+  .fast_return = { .value = -1, .changed = false },
+  .big_square_button = { .value = -1, .changed = false },
+  .speed_knob = { .value = -1, .changed = false }
 };
 
 typedef struct {
@@ -238,6 +251,8 @@ void setup() {
   pinMode(light_panel_A_green, OUTPUT);
   digitalWrite(light_panel_A_green, LED_OFF);
 
+  pinMode(light_panel_A_warning, OUTPUT);
+  digitalWrite(light_panel_A_warning, LED_OFF);
   
   // ** configure switches (buttons, levers, etc.)
 
@@ -261,6 +276,7 @@ void setup() {
   digitalWrite(switch_source_fast_return, SWITCH_SOURCE);
   pinMode(switch_fast_return, INPUT_PULLUP);
 
+  pinMode(switch_plinth_big_square_button, INPUT_PULLUP);
 
   // ** prepare to animate lights
   
@@ -521,6 +537,21 @@ void loop_tardis() {
     TARDIS.fast_return.value = value;
   }
 
+  value = digitalRead(switch_plinth_big_square_button);
+  if (value != TARDIS.big_square_button.value) {
+    if (TARDIS.big_square_button.value != -1) {
+      TARDIS.big_square_button.changed = true;
+    }
+    TARDIS.big_square_button.value = value;
+  }
+
+  value = analogRead(knob_speed);
+  if ( abs(value - TARDIS.speed_knob.value) > 2 ) {
+    if (TARDIS.speed_knob.value != -1) {
+      TARDIS.speed_knob.changed = true;
+    }
+    TARDIS.speed_knob.value = value;
+  }
   
   // ** take action based on control changes
 
@@ -580,7 +611,19 @@ void loop_tardis() {
     TARDIS.fast_return.changed = false;
   }
 
-  
+  if (TARDIS.big_square_button.changed) {
+    Serial.print("Big Square Button: ");
+    Serial.println(TARDIS.big_square_button.value);
+    TARDIS.big_square_button.changed = false;
+    
+    digitalWrite(light_panel_A_warning, TARDIS.big_square_button.value); 
+                                                                                               }
+
+  if (TARDIS.speed_knob.changed) {
+    Serial.print("Speed Knob: ");
+    Serial.println(TARDIS.speed_knob.value);
+    TARDIS.speed_knob.changed = false;
+  }
 
   // ** animate lights
 
