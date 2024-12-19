@@ -9,7 +9,7 @@
  * 
  */
 
-#define version_string "version 20210406.006"
+#define version_string "version 20210406.007"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -58,6 +58,11 @@
 #define SFX_KEYCLIK2 13
 
 #define sound_startup SFX_KEYCLIK1
+
+#define SFX_PRIORITY_LOWEST 0
+#define SFX_PRIORITY_OPTIONAL 0
+#define SFX_PRIORITY_HIGHEST 1
+#define SFX_PRIORITY_REPLACE 1
 
 // ** other constants
 
@@ -126,7 +131,7 @@ void setup() {
 
   // ** play a startup sound
 
-  soundFX_play(sound_startup);
+  soundFX_play(sound_startup, SFX_PRIORITY_HIGHEST);
 
   // ** configure Lights (LED-driving output pins)
   
@@ -184,8 +189,11 @@ void test_major_mode() {
 }
 
 void major_mode_begin(int major_mode) {
+  
     TARDIS.major_mode = major_mode;
+    
     switch (TARDIS.major_mode) {
+      
     case MAJOR_MODE_TARDIS:
       digitalWrite(light_demat_middle, LED_OFF);
       digitalWrite(light_demat_top, LED_OFF);
@@ -194,169 +202,43 @@ void major_mode_begin(int major_mode) {
       old.demat = -1;
       old.speed = -1;
       TARDIS.minor_mode = MINOR_MODE_IDLE;
-      soundFX_play(SFX_KEYCLIK1);
+      soundFX_play(SFX_6BEEPS, SFX_PRIORITY_OPTIONAL);  ///      soundFX_play(SFX_KEYCLIK1);
       break;
 
     case MAJOR_MODE_ROCKET:
-      soundFX_play(SFX_KEYCLIK2);
+      soundFX_play(SFX_KEYCLIK2, SFX_PRIORITY_OPTIONAL);
       break;
     
     case MAJOR_MODE_DEMO:
       digitalWrite(light_demat_bottom, LED_ON);
       // other lights are set directly from levers in this major mode
-      soundFX_play(SFX_KACHUNK);
+      soundFX_play(SFX_KACHUNK, SFX_PRIORITY_OPTIONAL);
       break;
     }
 }
 
+boolean already_playing = false;
+
 void loop_tardis() {
 
-  scan_controls_for_changes();
+  // check for changed controls
 
-  //check_for_sound_finished();
-  estimate_sound_finished();
-  
-}
-
-uint32_t approximate_sound_end_time = 0;
-#define approximate_demat_remat_sound_duration 20000
-
-void scan_controls_for_changes() {
-
-  // note: reset switch is hardwired, not handled in code.
-  // note: major mode switch is handled elsewhere; could be moved here.
-  
-  int door = digitalRead(switch_door_lever);
-  
-  if (door != old.door) {
-    //Serial.print("Door changed: ");
-    //Serial.println(door);
-   if (old.door != -1) {
-     soundFX_play(SFX_DOORS);
-   }
-   old.door = door;
-  }
-  
-  int demat = digitalRead(switch_demat_lever);
-
-  if (demat != old.demat) {
-    Serial.print("Demat changed: ");
-    Serial.println(demat);
-
-    if (old.demat != -1) {
-        
-      switch (TARDIS.minor_mode) {
-        case MINOR_MODE_IDLE:
-          TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
-          soundFX_play(SFX_DEMAT);
-          approximate_sound_end_time = millis() + approximate_demat_remat_sound_duration;
-          Serial.println("Dematerializing...");
-          break;
-  
-        case MINOR_MODE_TAKEOFF:
-          Serial.println("Demat toggled while dematting, ignoring");
-          break;
-  
-        case MINOR_MODE_FLIGHT:
-          TARDIS.minor_mode = MINOR_MODE_LANDING;
-          soundFX_play(SFX_REMAT);
-          approximate_sound_end_time = millis() + approximate_demat_remat_sound_duration;
-          Serial.println("...Rematerializing.");
-          break;
-  
-        case MINOR_MODE_LANDING:
-          Serial.println("Remat toggled while rematting, ignoring");
-          break;
-      }
+  // check for sound playback status
+  boolean playing = soundFX_playing();
+  if (playing) {
+    if (!already_playing) {
+      Serial.println("sfx playing....");
     }
-    
-    old.demat = demat;
-    
-    Serial.print("minor mode ");
-    Serial.println(TARDIS.minor_mode);
-    
-  }
-  
-  int speed = analogRead(knob_speed);
-
-  if (abs(speed - old.speed) > 2) {
-    //Serial.print("Speed changed: ");
-    //Serial.println(speed);
-    old.speed = speed;
-  }
-}
-
-uint32_t next_sound_check_time = 0;
-uint32_t sound_check_interval = 1000;
-
-void estimate_sound_finished() {
-  // don't check too often
-  uint32_t current_time = millis();
-  if (current_time < next_sound_check_time) {
-    return;
-  }
-
-  if (current_time < approximate_sound_end_time) {
-    return;
-  }
-
-  
-    switch (TARDIS.minor_mode) {
-      case MINOR_MODE_TAKEOFF:
-        TARDIS.minor_mode = MINOR_MODE_FLIGHT;
-        Serial.println("Demat complete.");
-        break;
-      case MINOR_MODE_LANDING:
-        TARDIS.minor_mode = MINOR_MODE_IDLE;
-        Serial.println("Remat complete.");
-        break;
-    }
-    
-}
-
-// (not recommended)
-void check_for_sound_finished() {
-
-  // don't check too often
-  uint32_t current_time = millis();
-  if (current_time < next_sound_check_time) {
-    return;
-  }
-  
-  uint32_t current;
-  uint32_t total;
-
-  boolean result = soundFX_board.trackSize(&current, &total);
-  /*
-  Serial.print(result);
-  Serial.print(" -- ");
-  Serial.print(current);
-  Serial.print(" -- ");
-  Serial.print(total);
-  Serial.print(" -- ");Serial.println("");
-        
-  Serial.print((total - current));
-  Serial.println();
-  */
-  if (result == 0) {
-    switch (total) {
-      case 168975: // demat
-          TARDIS.minor_mode = MINOR_MODE_FLIGHT;
-          Serial.println("...demat complete.");
-          break;
-
-      case 88285: // remat
-          TARDIS.minor_mode = MINOR_MODE_IDLE;
-          Serial.println("...remat complete.");
-          break;
-
-      default: // ??
-         Serial.println("other sound complete:");
-         Serial.println(total);
+  } else {
+    if (already_playing) {
+      Serial.println("sfx done playing.");
     }
   }
+  already_playing = playing;
+}
 
-  next_sound_check_time = current_time + sound_check_interval;
+boolean soundFX_playing() {
+  return !digitalRead(SoundFX_Active);
 }
 
 void print_hello_serial() {
@@ -369,9 +251,24 @@ void print_hello_serial() {
   Serial.println(version_string);
 }
 
-void soundFX_play(uint8_t file_number) {
+
+void soundFX_play(uint8_t file_number, int priority) {
+
+    if (soundFX_playing()) {
+      switch (priority) {
+        case SFX_PRIORITY_OPTIONAL:
+          // so don't play while something else is playing
+          return; // early exit
+
+        case SFX_PRIORITY_REPLACE:
+          soundFX_stop();
+          break;          
+      }
+    }
+    
+    soundFX_board.volUp();
     if (! soundFX_board.playTrack((uint8_t)file_number) ) {
-        Serial.println("Failed to play sound?");
+        Serial.print("Failed to play sound? #");
         Serial.println(file_number);
     }
 }
@@ -380,6 +277,7 @@ void soundFX_stop() {
     if (! soundFX_board.stop() ) {
         Serial.println("Failed to stop sound");
     }
+    soundFX_board.volUp();
 }
 
 void soundFX_list_files() {
