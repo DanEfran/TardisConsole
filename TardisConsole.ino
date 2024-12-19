@@ -1,15 +1,15 @@
 /*
- * -- sketch: TardisConsoleMega2560 --
- * 
- * by Dan Efran, 2021-03
- * 
- * Not surprisingly, this is a TARDIS Console sketch to run on an Arduino Mega 2560.
- * ("TARDIS Console" in the sense of "Rocketship Busy-board": we make some lights and switches 
- * "do something" abstractly futuristic.)
- * 
- */
+   -- sketch: TardisConsoleMega2560 --
 
-#define version_string "version 20210406.013"
+   by Dan Efran, 2021-03
+
+   Not surprisingly, this is a TARDIS Console sketch to run on an Arduino Mega 2560.
+   ("TARDIS Console" in the sense of "Rocketship Busy-board": we make some lights and switches
+   "do something" abstractly futuristic.)
+
+*/
+
+#define version_string "version 20210406.014"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -71,19 +71,21 @@
 // ** other constants
 
 // LEDs are common anode; set cathode LOW-to-glow
-#define LED_OFF HIGH 
-#define LED_ON LOW 
+#define LED_OFF HIGH
+#define LED_ON LOW
 // switches are "closed" = LOW because "open" = INPUT_PULLUP
 // switches not physically connectable to a GND pin can (equivalently) connect to a SWITCH_SOURCE output pin
-#define SWITCH_SOURCE LOW 
+#define SWITCH_SOURCE LOW
 
 // ** global objects & data
 
 SoftwareSerial soundFX_serial = SoftwareSerial(SoundFX_TX, SoundFX_RX);
 Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, SoundFX_Reset);
 
-#define MAJOR_MODE_ROCKET   2
-#define MAJOR_MODE_DEMO     0
+// major mode switch toggles between modes 0 and 1.
+// modes 2+ are disabled; edit here to set the desired active modes as 0 and 1
+#define MAJOR_MODE_ROCKET   0
+#define MAJOR_MODE_DEMO     2
 #define MAJOR_MODE_TARDIS   1
 #define MAJOR_MODE_STARTUP  -1
 
@@ -118,30 +120,47 @@ typedef struct {
 } Tardis;
 
 Tardis TARDIS = {
-  .major_mode = MAJOR_MODE_DEMO,
+  .major_mode = MAJOR_MODE_STARTUP,
   .minor_mode = MINOR_MODE_IDLE,
   .sound_end_mode_change = false,
   .door_lever = { .value = -1, .changed = false },
   .demat_lever = { .value = -1, .changed = false }
 };
 
+typedef struct {
+  int takeoff;
+  int landing;
+  int doors;
+  int startup;
+} Soundset;
 
+// one per major mode: 0, 1
+Soundset soundset[2] = {
+  { .takeoff = SFX_BLASTOFF,
+    .landing = SFX_LANDING,
+    .doors = SFX_KACHUNK,
+    .startup = SFX_KEYCLIK2
+  },
+  { .takeoff = SFX_DEMAT,
+    .landing = SFX_REMAT,
+    .doors = SFX_DOORS,
+    .startup = SFX_KEYCLIK1
+  }
+};
 
 // ** main functions
 
 void setup() {
 
-  TARDIS.major_mode = MAJOR_MODE_STARTUP;
-  
   // ** establish (optional) serial connection with computer (for debugging etc.)
-  
+
   Serial.begin(115200);
   print_hello_serial();
 
   // ** establish connection with sound effects board and reset it
-  
+
   soundFX_serial.begin(9600);
-    
+
   if (!soundFX_board.reset()) {
     Serial.println("SFX board not found");
   } else {
@@ -149,23 +168,19 @@ void setup() {
     soundFX_list_files();
   }
 
-  // ** play a startup sound
-
-  //soundFX_play(sound_startup, SFX_PRIORITY_HIGHEST);
-
   // ** configure Lights (LED-driving output pins)
-  
+
   pinMode(light_demat_bottom, OUTPUT);
   digitalWrite(light_demat_bottom, LED_OFF);
 
   pinMode(light_demat_middle, OUTPUT);
   digitalWrite(light_demat_middle, LED_OFF);
-  
+
   pinMode(light_demat_top, OUTPUT);
   digitalWrite(light_demat_top, LED_OFF);
 
   // ** configure switches (buttons, levers, etc.)
-  
+
   pinMode(switch_source_demat_lever, OUTPUT);
   digitalWrite(switch_source_demat_lever, SWITCH_SOURCE);
   pinMode(switch_demat_lever, INPUT_PULLUP);
@@ -173,11 +188,13 @@ void setup() {
   pinMode(switch_source_door_lever, OUTPUT);
   digitalWrite(switch_source_door_lever, SWITCH_SOURCE);
   pinMode(switch_door_lever, INPUT_PULLUP);
-    
+
   pinMode(switch_source_major_mode, OUTPUT);
   digitalWrite(switch_source_major_mode, SWITCH_SOURCE);
   pinMode(switch_major_mode, INPUT_PULLUP);
 
+  // ** prepare to animate lights
+  
   for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
     lfxEvents[ii].pin = -1;
     lfxEvents[ii].when = ULONG_MAX;
@@ -186,9 +203,9 @@ void setup() {
 
 
 void loop() {
-      
+
   test_major_mode();
-  
+
   switch (TARDIS.major_mode) {
     case MAJOR_MODE_TARDIS:
       loop_tardis();
@@ -224,7 +241,7 @@ boolean lightFX_addEvent(int pin, int value, uint32_t when) {
 void lightFX_update() {
 
   uint32_t now = millis();
-  
+
   for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
     if (lfxEvents[ii].pin != -1) {
       if (now >= lfxEvents[ii].when) {
@@ -239,7 +256,7 @@ void lightFX_update() {
 void lightFX_play(int lfx) {
 
   uint32_t now = millis();
-  
+
   switch (lfx) {
 
     case LFX_DEMAT:
@@ -249,7 +266,7 @@ void lightFX_play(int lfx) {
       lightFX_addEvent(light_demat_bottom, LED_ON, now + 600);
       lightFX_addEvent(light_demat_middle, LED_ON, now + 1200);
       lightFX_addEvent(light_demat_top,    LED_ON, now + 1800);
-      
+
       break;
 
     case LFX_REMAT:
@@ -259,13 +276,13 @@ void lightFX_play(int lfx) {
       lightFX_addEvent(light_demat_top, LED_OFF, now + 600);
       lightFX_addEvent(light_demat_middle, LED_OFF, now + 1200);
       lightFX_addEvent(light_demat_bottom,    LED_OFF, now + 1800);
-     break;
-      
+      break;
+
   }
 }
 
 void test_major_mode() {
-  
+
   int major_mode = digitalRead(switch_major_mode);
   if (major_mode != TARDIS.major_mode) {
     major_mode_begin(major_mode);
@@ -275,11 +292,11 @@ void test_major_mode() {
 uint32_t next_sound_check = 0;
 
 void major_mode_begin(int major_mode) {
-  
-    TARDIS.major_mode = major_mode;
-    
-    switch (TARDIS.major_mode) {
-      
+
+  TARDIS.major_mode = major_mode;
+
+  switch (TARDIS.major_mode) {
+
     case MAJOR_MODE_TARDIS:
       digitalWrite(light_demat_middle, LED_OFF);
       digitalWrite(light_demat_top, LED_OFF);
@@ -288,25 +305,33 @@ void major_mode_begin(int major_mode) {
       TARDIS.door_lever.changed = false;
       TARDIS.minor_mode = MINOR_MODE_STARTUP;
       Serial.println("TARDIS Startup...");
-      soundFX_play(SFX_6BEEPS, SFX_PRIORITY_HIGHEST);  ///      soundFX_play(SFX_KEYCLIK1, SFX_PRIORITY_HIGHEST);
+      soundFX_play(soundset[TARDIS.major_mode].startup, SFX_PRIORITY_HIGHEST);
       TARDIS.sound_end_mode_change = true;
       next_sound_check = millis() + SOUND_CHECK_DELAY;
       break;
 
     case MAJOR_MODE_ROCKET:
-    
+
+      digitalWrite(light_demat_middle, LED_OFF);
+      digitalWrite(light_demat_top, LED_OFF);
+      digitalWrite(light_demat_bottom, LED_OFF);
+      TARDIS.door_lever.value = -1;
+      TARDIS.door_lever.changed = false;
+      TARDIS.minor_mode = MINOR_MODE_STARTUP;
       Serial.println("Rocket Startup...");
-      soundFX_play(SFX_KEYCLIK2, SFX_PRIORITY_HIGHEST);
+      soundFX_play(soundset[TARDIS.major_mode].startup, SFX_PRIORITY_HIGHEST);
+      TARDIS.sound_end_mode_change = true;
+      next_sound_check = millis() + SOUND_CHECK_DELAY;
       break;
-    
+
     case MAJOR_MODE_DEMO:
-    
+
       Serial.println("Self-Test Startup...");
       digitalWrite(light_demat_bottom, LED_ON);
       // other lights are set directly from levers in this major mode
-      soundFX_play(SFX_KACHUNK, SFX_PRIORITY_HIGHEST);
+      soundFX_play(SFX_6BEEPS, SFX_PRIORITY_HIGHEST);
       break;
-    }
+  }
 }
 
 boolean already_playing = false;
@@ -337,9 +362,9 @@ void loop_tardis() {
           TARDIS.sound_end_mode_change = false;
           break;
       }
-    }  
+    }
   }
-  
+
   // ** poll for changed controls
 
   int value;
@@ -355,7 +380,7 @@ void loop_tardis() {
   value = digitalRead(switch_demat_lever);
   if (value != TARDIS.demat_lever.value) {
     if (TARDIS.demat_lever.value != -1) {
-          TARDIS.demat_lever.changed = true;
+      TARDIS.demat_lever.changed = true;
     }
     TARDIS.demat_lever.value = value;
   }
@@ -363,38 +388,38 @@ void loop_tardis() {
   // ** take action based on control changes
 
   // ("take action" is mostly sounds, lights, and minor_mode transitions)
-  
+
   if (TARDIS.door_lever.changed) {
     Serial.println("Doors.");
-    soundFX_play(SFX_DOORS, SFX_PRIORITY_OPTIONAL);
+    soundFX_play(soundset[TARDIS.major_mode].doors, SFX_PRIORITY_OPTIONAL);
     TARDIS.door_lever.changed = false;
   }
 
   if (TARDIS.demat_lever.changed) {
     switch (TARDIS.minor_mode) {
-      
+
       case MINOR_MODE_IDLE:
         TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
         TARDIS.sound_end_mode_change = true;
         Serial.println("Demat...");
         lightFX_play(LFX_DEMAT);
-        soundFX_play(SFX_DEMAT, SFX_PRIORITY_REPLACE);
+        soundFX_play(soundset[TARDIS.major_mode].takeoff, SFX_PRIORITY_REPLACE);
         next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
-        
+
       case MINOR_MODE_TAKEOFF:
         Serial.println("(demat lever changed in takeoff mode)");
         break;
-        
+
       case MINOR_MODE_FLIGHT:
         Serial.println("Remat...");
         TARDIS.minor_mode = MINOR_MODE_LANDING;
         TARDIS.sound_end_mode_change = true;
         lightFX_play(LFX_REMAT);
-        soundFX_play(SFX_REMAT, SFX_PRIORITY_REPLACE);
+        soundFX_play(soundset[TARDIS.major_mode].landing, SFX_PRIORITY_REPLACE);
         next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
-        
+
       case MINOR_MODE_LANDING:
         Serial.println("(demat lever changed in landing mode)");
         break;
@@ -403,16 +428,16 @@ void loop_tardis() {
   }
 
   // ** animate lights
-  
+
   lightFX_update();
 
   // note: if preferred, it's fine to run this loop a bit less frequently, e.g.:
   // delay(10);
-  
+
 }
 
 void monitor_playback_status() {
-  
+
   boolean playing = soundFX_playing();
   if (playing) {
     if (!already_playing) {
@@ -431,7 +456,7 @@ boolean soundFX_playing() {
 }
 
 void print_hello_serial() {
-  
+
   Serial.println("");
   Serial.println("======================");
   Serial.println("==  TARDIS Console  ==");
@@ -443,52 +468,52 @@ void print_hello_serial() {
 
 void soundFX_play(uint8_t file_number, int priority) {
 
-    if (soundFX_playing()) {
-      switch (priority) {
-        case SFX_PRIORITY_OPTIONAL:
-          // so don't play while something else is playing
-          return; // early exit
+  if (soundFX_playing()) {
+    switch (priority) {
+      case SFX_PRIORITY_OPTIONAL:
+        // so don't play while something else is playing
+        return; // early exit
 
-        case SFX_PRIORITY_REPLACE:
-          soundFX_stop();
-          break;          
-      }
+      case SFX_PRIORITY_REPLACE:
+        soundFX_stop();
+        break;
     }
-    
-    soundFX_board.volUp();
-    if (! soundFX_board.playTrack((uint8_t)file_number) ) {
-        Serial.print("Failed to play sound? #");
-        Serial.println(file_number);
-    }
+  }
+
+  soundFX_board.volUp();
+  if (! soundFX_board.playTrack((uint8_t)file_number) ) {
+    Serial.print("Failed to play sound? #");
+    Serial.println(file_number);
+  }
 }
 
 void soundFX_stop() {
-    if (! soundFX_board.stop() ) {
-        Serial.println("Failed to stop sound");
-    }
-    soundFX_board.volUp();
+  if (! soundFX_board.stop() ) {
+    Serial.println("Failed to stop sound");
+  }
+  soundFX_board.volUp();
 }
 
 void soundFX_list_files() {
-  
-    uint8_t files = soundFX_board.listFiles();
-    
-    Serial.println("SFX File Listing");
-    Serial.println("========================");
-    Serial.println();
-    Serial.print("Found "); Serial.print(files); Serial.println(" Files");
-    
-    for (uint8_t f=0; f<files; f++) {
-      Serial.print(f); 
-      Serial.print("\tname: "); Serial.print(soundFX_board.fileName(f));
-      Serial.print("\tsize: "); Serial.println(soundFX_board.fileSize(f));
-    }
-    
-    Serial.println();
-    Serial.println("========================");
-    Serial.println();
+
+  uint8_t files = soundFX_board.listFiles();
+
+  Serial.println("SFX File Listing");
+  Serial.println("========================");
+  Serial.println();
+  Serial.print("Found "); Serial.print(files); Serial.println(" Files");
+
+  for (uint8_t f = 0; f < files; f++) {
+    Serial.print(f);
+    Serial.print("\tname: "); Serial.print(soundFX_board.fileName(f));
+    Serial.print("\tsize: "); Serial.println(soundFX_board.fileSize(f));
+  }
+
+  Serial.println();
+  Serial.println("========================");
+  Serial.println();
 }
-    
+
 // state tracking for loop_demo
 int old_speed = 0;
 int old_door = 3;
@@ -498,10 +523,10 @@ int printed_something = 0;
 void loop_demo() {
 
   // ** proof-of-concept loop, responds crudely to a few controls
-  
+
   digitalWrite(light_demat_middle, digitalRead(switch_demat_lever));
   digitalWrite(light_demat_top, digitalRead(switch_door_lever));
-  
+
   int val = analogRead(knob_speed);
   if (abs(val - old_speed) > 2) {
     Serial.print("Speed: ");
@@ -509,7 +534,7 @@ void loop_demo() {
     printed_something = 1;
     old_speed = val;
   }
-  
+
   int door = digitalRead(switch_door_lever);
   if (door != old_door) {
     Serial.print("  Door: ");
@@ -517,7 +542,7 @@ void loop_demo() {
     printed_something = 1;
   }
   old_door = door;
-  
+
   int demat = digitalRead(switch_demat_lever);
   if (demat != old_demat) {
     Serial.print("  Demat: ");
@@ -525,7 +550,7 @@ void loop_demo() {
     printed_something = 1;
   }
   old_demat = demat;
-  
+
   if (printed_something == 1) {
     Serial.println("");
     printed_something = 0;
@@ -534,31 +559,31 @@ void loop_demo() {
 }
 
 void loop_rocket() {
-    Serial.println("rocket...");
-    delay(1000);  
+  // at present, rocket mode differs from tardis mode only in which sounds are played.
+  loop_tardis();
 }
 
 
 /* -- NOTES --
- *  
- *  General capabilities:
- *  - debounced switches (in hardware?)
- *  - sounds on switch state changes (different sound each way)
- *  - sound while switch closed (looping)
- *  - sound priorities (one pauses another, 2 levels (background/foreground) is probably enough)
- *  - delay trigger: lights/sounds happen several seconds after the triggering switch event
- *  
- *  Specific operations:
- *  - door lever: sound DoorOpen on switch open; sound DoorClose on switch close (or v.v.)
- *  - mat/demat lever: sound Materialize on switch open; sound Dematerialize on switch close (or v.v.)
- *  - background: sound BackgroundHum while switch is closed, lowest priority (paused by other sounds)
- *  - recall pyramid: three LEDs strobe-flash in a pattern, while a switch is closed but starting delayed
- *  - fault indicator: sound WarningBeeps loops and one LED flashes after a button is pressed, 
- *      starting several seconds delayed, stopping when another button is pressed
- *  - cloister bell: sound ClosterBell repeats while switch (Fast Return) has been closed for ten seconds, 
- *      but starting delayed another ten seconds or more
- *  - keypad buttons: sound ButtonBoopN (for several N at random) when any switch of a group are closed)
- *  - blinkenlights: a group of lights that can flash in at least a "thinking" random mode; more modes ideal
- *  
- */
+
+    General capabilities:
+    - debounced switches (in hardware?)
+    - sounds on switch state changes (different sound each way)
+    - sound while switch closed (looping)
+    - sound priorities (one pauses another, 2 levels (background/foreground) is probably enough)
+    - delay trigger: lights/sounds happen several seconds after the triggering switch event
+
+    Specific operations:
+    - door lever: sound DoorOpen on switch open; sound DoorClose on switch close (or v.v.)
+    - mat/demat lever: sound Materialize on switch open; sound Dematerialize on switch close (or v.v.)
+    - background: sound BackgroundHum while switch is closed, lowest priority (paused by other sounds)
+    - recall pyramid: three LEDs strobe-flash in a pattern, while a switch is closed but starting delayed
+    - fault indicator: sound WarningBeeps loops and one LED flashes after a button is pressed,
+        starting several seconds delayed, stopping when another button is pressed
+    - cloister bell: sound ClosterBell repeats while switch (Fast Return) has been closed for ten seconds,
+        but starting delayed another ten seconds or more
+    - keypad buttons: sound ButtonBoopN (for several N at random) when any switch of a group are closed)
+    - blinkenlights: a group of lights that can flash in at least a "thinking" random mode; more modes ideal
+
+*/
 
