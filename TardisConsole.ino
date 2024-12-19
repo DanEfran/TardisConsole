@@ -1,7 +1,7 @@
 /*
    -- sketch: TardisConsoleMega2560 --
 
-   by Dan Efran, 2021-03
+   by Dan Efran, 2021-03+
 
    Not surprisingly, this is a TARDIS Console sketch to run on an Arduino Mega 2560.
    ("TARDIS Console" in the sense of "Rocketship Busy-board": we make some lights and switches
@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210406.018"
+#define version_string "version 20210407.019"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -26,16 +26,22 @@
 #define light_demat_bottom 38
 #define light_demat_middle 40
 #define light_demat_top 42
+#define light_panel_A_red 44
+#define light_panel_A_green 46
 
 // switches
 #define switch_demat_lever 50
 #define switch_door_lever 52
 #define switch_major_mode 48
+#define switch_lockout_key 39
+#define switch_fast_return 43
 
 // switch sources (some switches connect to adjacent pins rather than to a bus)
 #define switch_source_demat_lever 51
 #define switch_source_door_lever 53
 #define switch_source_major_mode 49
+#define switch_source_lockout_key 41
+#define switch_source_fast_return 45
 
 // analog inputs
 #define knob_speed A0
@@ -121,6 +127,8 @@ typedef struct {
   boolean sound_end_mode_change;
   Control door_lever;
   Control demat_lever;
+  Control lockout_key;
+  Control fast_return;
 } Tardis;
 
 Tardis TARDIS = {
@@ -128,7 +136,10 @@ Tardis TARDIS = {
   .minor_mode = MINOR_MODE_IDLE,
   .sound_end_mode_change = false,
   .door_lever = { .value = -1, .changed = false },
-  .demat_lever = { .value = -1, .changed = false }
+  .demat_lever = { .value = -1, .changed = false },
+  .lockout_key = { .value = -1, .changed = false },
+  .fast_return = { .value = -1, .changed = false }
+  
 };
 
 typedef struct {
@@ -183,6 +194,14 @@ void setup() {
   pinMode(light_demat_top, OUTPUT);
   digitalWrite(light_demat_top, LED_OFF);
 
+
+  pinMode(light_panel_A_red, OUTPUT);
+  digitalWrite(light_panel_A_red, LED_OFF);
+
+  pinMode(light_panel_A_green, OUTPUT);
+  digitalWrite(light_panel_A_green, LED_OFF);
+
+  
   // ** configure switches (buttons, levers, etc.)
 
   pinMode(switch_source_demat_lever, OUTPUT);
@@ -196,6 +215,15 @@ void setup() {
   pinMode(switch_source_major_mode, OUTPUT);
   digitalWrite(switch_source_major_mode, SWITCH_SOURCE);
   pinMode(switch_major_mode, INPUT_PULLUP);
+
+  pinMode(switch_source_lockout_key, OUTPUT);
+  digitalWrite(switch_source_lockout_key, SWITCH_SOURCE);
+  pinMode(switch_lockout_key, INPUT_PULLUP);
+
+  pinMode(switch_source_fast_return, OUTPUT);
+  digitalWrite(switch_source_fast_return, SWITCH_SOURCE);
+  pinMode(switch_fast_return, INPUT_PULLUP);
+
 
   // ** prepare to animate lights
   
@@ -228,6 +256,7 @@ void loop() {
 
 #define LFX_DEMAT 1
 #define LFX_REMAT 2
+#define LFX_DOORS 3
 
 boolean lightFX_addEvent(int pin, int value, uint32_t when, boolean priority) {
 
@@ -313,7 +342,25 @@ void lightFX_play(int lfx) {
         lightFX_addEvent(light_demat_bottom,    LED_ON, now +  600 + pulse_time, LFX_PRIORITY_MERGE);
       }
       break;
+      
+    case LFX_DOORS:
+      // @#@t testing panel A's red and green lights. final doors animation may differ.
+      lightFX_addEvent(light_panel_A_red, LED_ON, now + 0, LFX_PRIORITY_REPLACE);
+      lightFX_addEvent(light_panel_A_red, LED_OFF, now + 1000, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_red, LED_ON, now + 2000, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_red, LED_OFF, now + 3000, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_red, LED_ON, now + 4000, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_red, LED_OFF, now + 5000, LFX_PRIORITY_MERGE);
 
+      lightFX_addEvent(light_panel_A_green, LED_ON, now + 500, LFX_PRIORITY_REPLACE);
+      lightFX_addEvent(light_panel_A_green, LED_OFF, now + 1500, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_green, LED_ON, now + 2500, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_green, LED_OFF, now + 3500, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_green, LED_ON, now + 4500, LFX_PRIORITY_MERGE);
+      lightFX_addEvent(light_panel_A_green, LED_OFF, now + 5500, LFX_PRIORITY_MERGE);
+      
+      break;
+      
   }
 }
 
@@ -394,7 +441,7 @@ void loop_tardis() {
           break;
         case MINOR_MODE_STARTUP:
           Serial.println("...ready.");
-          TARDIS.minor_mode = MINOR_MODE_IDLE
+          TARDIS.minor_mode = MINOR_MODE_IDLE;
           TARDIS.sound_end_mode_change = false;
           break;
       }
@@ -421,6 +468,23 @@ void loop_tardis() {
     TARDIS.demat_lever.value = value;
   }
 
+  value = digitalRead(switch_lockout_key);
+  if (value != TARDIS.lockout_key.value) {
+    if (TARDIS.lockout_key.value != -1) {
+      TARDIS.lockout_key.changed = true;
+    }
+    TARDIS.lockout_key.value = value;
+  }
+  
+  value = digitalRead(switch_fast_return);
+  if (value != TARDIS.fast_return.value) {
+    if (TARDIS.fast_return.value != -1) {
+      TARDIS.fast_return.changed = true;
+    }
+    TARDIS.fast_return.value = value;
+  }
+
+  
   // ** take action based on control changes
 
   // ("take action" is mostly sounds, lights, and minor_mode transitions)
@@ -428,6 +492,7 @@ void loop_tardis() {
   if (TARDIS.door_lever.changed) {
     Serial.println("Doors.");
     soundFX_play(soundset[TARDIS.major_mode].doors, SFX_PRIORITY_OPTIONAL);
+    lightFX_play(LFX_DOORS);
     TARDIS.door_lever.changed = false;
   }
 
@@ -462,6 +527,21 @@ void loop_tardis() {
     }
     TARDIS.demat_lever.changed = false;
   }
+
+  if (TARDIS.lockout_key.changed) {
+    Serial.print("Lockout key: ");
+    Serial.println(TARDIS.lockout_key.value);
+    TARDIS.lockout_key.changed = false;
+  }
+
+  
+  if (TARDIS.fast_return.changed) {
+    Serial.print("Fast Return: ");
+    Serial.println(TARDIS.fast_return.value);
+    TARDIS.fast_return.changed = false;
+  }
+
+  
 
   // ** animate lights
 
