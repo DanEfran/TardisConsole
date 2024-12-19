@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210406.014"
+#define version_string "version 20210406.015"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -66,7 +66,7 @@
 
 // time allowed for sound to actually start, before checking to see if it's done
 // 100 minimum! slower is fine up to 500 or so. (More might be perceptible lag.)
-#define SOUND_CHECK_DELAY 500
+#define SOUND_CHECK_DELAY 200
 
 // ** other constants
 
@@ -480,7 +480,10 @@ void soundFX_play(uint8_t file_number, int priority) {
     }
   }
 
+  // a bug in the sound FX board makes play() fail sometimes after stop().
+  // luckily, a volUp in between will fix it.
   soundFX_board.volUp();
+  
   if (! soundFX_board.playTrack((uint8_t)file_number) ) {
     Serial.print("Failed to play sound? #");
     Serial.println(file_number);
@@ -491,6 +494,8 @@ void soundFX_stop() {
   if (! soundFX_board.stop() ) {
     Serial.println("Failed to stop sound");
   }
+  // a bug in the sound FX board makes play() fail sometimes after stop().
+  // luckily, a volUp in between will fix it.
   soundFX_board.volUp();
 }
 
