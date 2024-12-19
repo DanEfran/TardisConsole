@@ -9,7 +9,7 @@
  * 
  */
 
-#define version_string "version 20210406.008"
+#define version_string "version 20210406.009"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -224,10 +224,28 @@ boolean already_playing = false;
 
 void loop_tardis() {
 
+
+  // when certain sounds end, minor mode changes.
+
+  if (TARDIS.sound_end_mode_change) {
+    if (!soundFX_playing()) {
+      if (TARDIS.minor_mode == MINOR_MODE_LANDING) {
+        Serial.println("...landed.");
+        TARDIS.minor_mode = MINOR_MODE_IDLE;
+        TARDIS.sound_end_mode_change = false;
+      } else if (TARDIS.minor_mode == MINOR_MODE_TAKEOFF) {
+        Serial.println("...flying.");
+        TARDIS.minor_mode = MINOR_MODE_FLIGHT;
+        TARDIS.sound_end_mode_change = false;
+      }
+      // other cases: no effect.
+    }  
+  }
+  
   // check for changed controls
 
   int value;
-  
+
   value = digitalRead(switch_door_lever);
   if (value != TARDIS.door_lever.value) {
     if (TARDIS.door_lever.value != -1) {
@@ -247,6 +265,7 @@ void loop_tardis() {
   // control changes typically represent commands
 
   if (TARDIS.door_lever.changed) {
+    Serial.println("Doors.");
     soundFX_play(SFX_DOORS, SFX_PRIORITY_OPTIONAL);
     TARDIS.door_lever.changed = false;
   }
@@ -257,39 +276,31 @@ void loop_tardis() {
       case MINOR_MODE_IDLE:
         TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
         TARDIS.sound_end_mode_change = true;
+        Serial.println("Demat...");
         soundFX_play(SFX_DEMAT, SFX_PRIORITY_REPLACE);
         break;
         
       case MINOR_MODE_TAKEOFF:
+        Serial.println("(demat lever changed in takeoff mode)");
         break;
         
       case MINOR_MODE_FLIGHT:
+        Serial.println("Remat...");
         TARDIS.minor_mode = MINOR_MODE_LANDING;
         TARDIS.sound_end_mode_change = true;
         soundFX_play(SFX_REMAT, SFX_PRIORITY_REPLACE);
         break;
         
       case MINOR_MODE_LANDING:
+        Serial.println("(demat lever changed in landing mode)");
         break;
     }
     TARDIS.demat_lever.changed = false;
   }
 
-  // when certain sounds end, minor mode changes.
-
-  if (TARDIS.sound_end_mode_change) {
-    if (!soundFX_playing()) {
-      if (TARDIS.minor_mode == MINOR_MODE_LANDING) {
-        TARDIS.minor_mode = MINOR_MODE_IDLE;
-        TARDIS.sound_end_mode_change = false;
-      } else if (TARDIS.minor_mode == MINOR_MODE_TAKEOFF) {
-        TARDIS.minor_mode = MINOR_MODE_FLIGHT;
-        TARDIS.sound_end_mode_change = false;
-      }
-      // other cases: no effect.
-    }
-    
-  }
+  // @#@? give sound time to start playing?
+  // also reduces whole loop's response resolution/increases latency. careful!
+  delay(500);
   
 }
 
