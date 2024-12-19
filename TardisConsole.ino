@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210407.019"
+#define version_string "version 20210407.020"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -48,20 +48,57 @@
 
 // ** sounds
 
-#define SFX_DOORS 0
-#define SFX_DEMAT 1
-#define SFX_REMAT 2
-#define SFX_BLASTOFF 3
-#define SFX_LANDING 4
-#define SFX_CLOISTER 5
-#define SFX_OLDHUM 6
-#define SFX_OLDCLOIS 7
-#define SFX_HUM 8
-#define SFX_6BEEPS 9
-#define SFX_LOWPOWER 10
-#define SFX_KACHUNK 11
-#define SFX_KEYCLIK1 12
-#define SFX_KEYCLIK2 13
+// note: these are in current file # order. if files are added/removed, these numbers may need to change
+#define SFX_STEREO_TEST     0
+#define SFX_LOWPOWER        1
+#define SFX_REMAT           2
+#define SFX_CLOISTER_MINE   3 
+#define SFX_MY_HUM          4
+#define SFX_CLOISTER_3      5
+#define SFX_RISING_BEEP     6
+#define SFX_SCANNER_COVER   7
+#define SFX_SERVO_MOTOR     8
+#define SFX_6BEEPS          9
+#define SFX_VIBRATO_PING    10
+#define SFX_OLDHUM          11
+#define SFX_DOORS           12
+#define SFX_BLASTOFF        13
+#define SFX_BOO_OOP         14
+#define SFX_BOOP            15
+#define SFX_HUM             16
+#define SFX_CLOISTER_1      17
+#define SFX_DEMAT           18
+#define SFX_KACHUNK         19
+#define SFX_KEYCLIK1        20
+#define SFX_KEYCLIK2        21
+#define SFX_LANDING         22
+
+// note: these are just here for reference. actually working with const char* is more trouble than it's worth.
+/*
+#define SFX_NAME_STEREO_TEST     "LEFTRITEOGG"
+#define SFX_NAME_LOWPOWER        "LOWPOWEROGG"
+#define SFX_NAME_REMAT           "MATERIALOGG"
+#define SFX_NAME_CLOISTER_MINE   "MY-CLOISOGG" 
+#define SFX_NAME_MY_HUM          "MY-HUMMMOGG"
+#define SFX_NAME_CLOISTER_3      "OG-CLOISOGG"
+#define SFX_NAME_RISING_BEEP     "RISEBEEPOGG"
+#define SFX_NAME_SCANNER_COVER   "SCANNER-OGG"
+#define SFX_NAME_SERVO_MOTOR     "SERVOHUMOGG"
+#define SFX_NAME_6BEEPS          "SIXBEEPSOGG"
+#define SFX_NAME_VIBRATO_PING    "VIBEPINGOGG"
+#define SFX_NAME_OLDHUM          "1963-HUMOGG"
+#define SFX_NAME_DOORS           "BIGDOORSOGG"
+#define SFX_NAME_BLASTOFF        "BLASTOFFOGG"
+#define SFX_NAME_BOO_OOP         "BOOO-OOPOGG"
+#define SFX_NAME_BOOP            "BOOPING OGG"
+#define SFX_NAME_HUM             "CLEANHUMOGG"
+#define SFX_NAME_CLOISTER_1      "CLOISTE1OGG"
+#define SFX_NAME_DEMAT           "DEMATERIOGG"
+#define SFX_NAME_KACHUNK         "HEVYDOOROGG"
+#define SFX_NAME_KEYCLIK1        "KEYCLIK1OGG"
+#define SFX_NAME_KEYCLIK2        "KEYCLIK2OGG"
+#define SFX_NAME_LANDING         "LANDING-OGG"
+*/
 
 #define sound_startup SFX_KEYCLIK1
 
@@ -531,6 +568,7 @@ void loop_tardis() {
   if (TARDIS.lockout_key.changed) {
     Serial.print("Lockout key: ");
     Serial.println(TARDIS.lockout_key.value);
+    // value 1: key removed
     TARDIS.lockout_key.changed = false;
   }
 
@@ -538,6 +576,7 @@ void loop_tardis() {
   if (TARDIS.fast_return.changed) {
     Serial.print("Fast Return: ");
     Serial.println(TARDIS.fast_return.value);
+    // value 0: fast return button pressed (perhaps stuck)
     TARDIS.fast_return.changed = false;
   }
 
@@ -581,7 +620,6 @@ void print_hello_serial() {
   Serial.println(version_string);
 }
 
-
 void soundFX_play(uint8_t file_number, int priority) {
 
   if (soundFX_playing()) {
@@ -605,6 +643,7 @@ void soundFX_play(uint8_t file_number, int priority) {
     Serial.println(file_number);
   }
 }
+
 
 void soundFX_stop() {
   if (! soundFX_board.stop() ) {
