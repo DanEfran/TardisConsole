@@ -9,7 +9,7 @@
  * 
  */
 
-#define version_string "version 20210406.011"
+#define version_string "version 20210406.012"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -63,6 +63,10 @@
 #define SFX_PRIORITY_OPTIONAL 0
 #define SFX_PRIORITY_HIGHEST 1
 #define SFX_PRIORITY_REPLACE 1
+
+// time allowed for sound to actually start, before checking to see if it's done
+// 100 minimum! slower is fine up to 500 or so. (More might be perceptible lag.)
+#define SOUND_CHECK_DELAY 500
 
 // ** other constants
 
@@ -186,6 +190,27 @@ void loop() {
 
 // ** support functions
 
+#define LFX_DEMAT 1
+#define LFX_REMAT 2
+
+void lightFX_play(int lfx) {
+  switch (lfx) {
+
+    case LFX_DEMAT:
+      digitalWrite(light_demat_bottom, LED_OFF);
+      digitalWrite(light_demat_middle, LED_ON);
+      digitalWrite(light_demat_top, LED_ON);
+      break;
+
+    case LFX_REMAT:
+      digitalWrite(light_demat_bottom, LED_ON);
+      digitalWrite(light_demat_middle, LED_OFF);
+      digitalWrite(light_demat_top, LED_OFF);
+      break;
+      
+  }
+}
+
 void test_major_mode() {
   
   int major_mode = digitalRead(switch_major_mode);
@@ -193,6 +218,8 @@ void test_major_mode() {
     major_mode_begin(major_mode);
   }
 }
+
+uint32_t next_sound_check = 0;
 
 void major_mode_begin(int major_mode) {
   
@@ -210,7 +237,7 @@ void major_mode_begin(int major_mode) {
       Serial.println("TARDIS Startup...");
       soundFX_play(SFX_6BEEPS, SFX_PRIORITY_HIGHEST);  ///      soundFX_play(SFX_KEYCLIK1, SFX_PRIORITY_HIGHEST);
       TARDIS.sound_end_mode_change = true;
-      delay(200); // allow sound to start before polling for it to stop
+      next_sound_check = millis() + SOUND_CHECK_DELAY;
       break;
 
     case MAJOR_MODE_ROCKET:
@@ -230,16 +257,15 @@ void major_mode_begin(int major_mode) {
 }
 
 boolean already_playing = false;
-uint32_t next_sound_check = 0;
 
 void loop_tardis() {
 
   uint32_t current_time = millis();
 
-  // when certain sounds end, minor mode changes.
+  // ** when certain sounds end, minor mode changes.
 
   if (TARDIS.sound_end_mode_change && (current_time > next_sound_check)) {
-    next_sound_check = current_time + 500; // 100 minimum! slower is fine.
+    next_sound_check = current_time + SOUND_CHECK_DELAY;
     if (!soundFX_playing()) {
       switch (TARDIS.minor_mode) {
         case MINOR_MODE_LANDING:
@@ -261,7 +287,7 @@ void loop_tardis() {
     }  
   }
   
-  // check for changed controls
+  // ** poll for changed controls
 
   int value;
 
@@ -281,8 +307,10 @@ void loop_tardis() {
     TARDIS.demat_lever.value = value;
   }
 
-  // control changes typically represent commands
+  // ** take action based on control changes
 
+  // ("take action" is mostly sounds, lights, and minor_mode transitions)
+  
   if (TARDIS.door_lever.changed) {
     Serial.println("Doors.");
     soundFX_play(SFX_DOORS, SFX_PRIORITY_OPTIONAL);
@@ -296,8 +324,9 @@ void loop_tardis() {
         TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
         TARDIS.sound_end_mode_change = true;
         Serial.println("Demat...");
+        lightFX_play(LFX_DEMAT);
         soundFX_play(SFX_DEMAT, SFX_PRIORITY_REPLACE);
-        next_sound_check = current_time + 500; // 100 minimum! slower is fine.
+        next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
         
       case MINOR_MODE_TAKEOFF:
@@ -308,8 +337,9 @@ void loop_tardis() {
         Serial.println("Remat...");
         TARDIS.minor_mode = MINOR_MODE_LANDING;
         TARDIS.sound_end_mode_change = true;
+        lightFX_play(LFX_REMAT);
         soundFX_play(SFX_REMAT, SFX_PRIORITY_REPLACE);
-        next_sound_check = current_time + 500; // 100 minimum! slower is fine.
+        next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
         
       case MINOR_MODE_LANDING:
