@@ -9,7 +9,7 @@
  * 
  */
 
-#define version_string "version 20210406.009"
+#define version_string "version 20210406.010"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -221,13 +221,16 @@ void major_mode_begin(int major_mode) {
 }
 
 boolean already_playing = false;
+uint32_t next_sound_check = 0;
 
 void loop_tardis() {
 
+  uint32_t current_time = millis();
 
   // when certain sounds end, minor mode changes.
 
-  if (TARDIS.sound_end_mode_change) {
+  if (TARDIS.sound_end_mode_change && (current_time > next_sound_check)) {
+    next_sound_check = current_time + 500; // 100 minimum! slower is fine.
     if (!soundFX_playing()) {
       if (TARDIS.minor_mode == MINOR_MODE_LANDING) {
         Serial.println("...landed.");
@@ -278,6 +281,7 @@ void loop_tardis() {
         TARDIS.sound_end_mode_change = true;
         Serial.println("Demat...");
         soundFX_play(SFX_DEMAT, SFX_PRIORITY_REPLACE);
+        next_sound_check = current_time + 500; // 100 minimum! slower is fine.
         break;
         
       case MINOR_MODE_TAKEOFF:
@@ -289,6 +293,7 @@ void loop_tardis() {
         TARDIS.minor_mode = MINOR_MODE_LANDING;
         TARDIS.sound_end_mode_change = true;
         soundFX_play(SFX_REMAT, SFX_PRIORITY_REPLACE);
+        next_sound_check = current_time + 500; // 100 minimum! slower is fine.
         break;
         
       case MINOR_MODE_LANDING:
@@ -297,11 +302,7 @@ void loop_tardis() {
     }
     TARDIS.demat_lever.changed = false;
   }
-
-  // @#@? give sound time to start playing?
-  // also reduces whole loop's response resolution/increases latency. careful!
-  delay(500);
-  
+    
 }
 
 void monitor_playback_status() {
