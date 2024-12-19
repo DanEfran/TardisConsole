@@ -1,12 +1,17 @@
 /*
-   -- sketch: TardisConsoleMega2560 --
+   -- sketch: TardisConsole.ino --
 
    by Dan Efran, 2021-03+
 
-   Not surprisingly, this is a TARDIS Console sketch to run on an Arduino Mega 2560.
-   ("TARDIS Console" in the sense of "Rocketship Busy-board": we make some lights and switches
-   "do something" abstractly futuristic.)
+   TARDIS Console controller
+   ("TARDIS Console" in the sense of "Rocketship Busy-board": we make some lights and switches "do something" abstractly futuristic.)
 
+
+  Hardware:
+    - Arduino Mega 2560
+    - Adafruit Audio FX Sound Board + 2x2W Amp
+        https://www.adafruit.com/product/2217
+    
 */
 
 #define version_string "version 20210407.025"
