@@ -9,7 +9,7 @@
  * 
  */
 
-#define version_string "version 20210406.007"
+#define version_string "version 20210406.008"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -88,24 +88,28 @@ Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, S
 #define MINOR_MODE_FLIGHT   2
 #define MINOR_MODE_LANDING  3
 
+typedef struct {
+  int value;
+  boolean changed;
+} Control;
 
 typedef struct {
   int major_mode;
   int minor_mode;
+  boolean sound_end_mode_change;
+  Control door_lever;
+  Control demat_lever;
 } Tardis;
 
 Tardis TARDIS = {
   .major_mode = MAJOR_MODE_DEMO,
-  .minor_mode = MINOR_MODE_IDLE
+  .minor_mode = MINOR_MODE_IDLE,
+  .sound_end_mode_change = false,
+  .door_lever = { .value = -1, .changed = false },
+  .demat_lever = { .value = -1, .changed = false }
 };
 
-typedef struct {
-  int door;
-  int demat;
-  int speed;
-} Controls;
 
-Controls old = { -1, -1, -1 };
 
 // ** main functions
 
@@ -198,21 +202,20 @@ void major_mode_begin(int major_mode) {
       digitalWrite(light_demat_middle, LED_OFF);
       digitalWrite(light_demat_top, LED_OFF);
       digitalWrite(light_demat_bottom, LED_OFF);
-      old.door = -1;
-      old.demat = -1;
-      old.speed = -1;
+      TARDIS.door_lever.value = -1;
+      TARDIS.door_lever.changed = false;
       TARDIS.minor_mode = MINOR_MODE_IDLE;
-      soundFX_play(SFX_6BEEPS, SFX_PRIORITY_OPTIONAL);  ///      soundFX_play(SFX_KEYCLIK1);
+      soundFX_play(SFX_6BEEPS, SFX_PRIORITY_HIGHEST);  ///      soundFX_play(SFX_KEYCLIK1, SFX_PRIORITY_HIGHEST);
       break;
 
     case MAJOR_MODE_ROCKET:
-      soundFX_play(SFX_KEYCLIK2, SFX_PRIORITY_OPTIONAL);
+      soundFX_play(SFX_KEYCLIK2, SFX_PRIORITY_HIGHEST);
       break;
     
     case MAJOR_MODE_DEMO:
       digitalWrite(light_demat_bottom, LED_ON);
       // other lights are set directly from levers in this major mode
-      soundFX_play(SFX_KACHUNK, SFX_PRIORITY_OPTIONAL);
+      soundFX_play(SFX_KACHUNK, SFX_PRIORITY_HIGHEST);
       break;
     }
 }
@@ -223,7 +226,75 @@ void loop_tardis() {
 
   // check for changed controls
 
-  // check for sound playback status
+  int value;
+  
+  value = digitalRead(switch_door_lever);
+  if (value != TARDIS.door_lever.value) {
+    if (TARDIS.door_lever.value != -1) {
+      TARDIS.door_lever.changed = true;
+    }
+    TARDIS.door_lever.value = value;
+  }
+
+  value = digitalRead(switch_demat_lever);
+  if (value != TARDIS.demat_lever.value) {
+    if (TARDIS.demat_lever.value != -1) {
+          TARDIS.demat_lever.changed = true;
+    }
+    TARDIS.demat_lever.value = value;
+  }
+
+  // control changes typically represent commands
+
+  if (TARDIS.door_lever.changed) {
+    soundFX_play(SFX_DOORS, SFX_PRIORITY_OPTIONAL);
+    TARDIS.door_lever.changed = false;
+  }
+
+  if (TARDIS.demat_lever.changed) {
+    switch (TARDIS.minor_mode) {
+      
+      case MINOR_MODE_IDLE:
+        TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
+        TARDIS.sound_end_mode_change = true;
+        soundFX_play(SFX_DEMAT, SFX_PRIORITY_REPLACE);
+        break;
+        
+      case MINOR_MODE_TAKEOFF:
+        break;
+        
+      case MINOR_MODE_FLIGHT:
+        TARDIS.minor_mode = MINOR_MODE_LANDING;
+        TARDIS.sound_end_mode_change = true;
+        soundFX_play(SFX_REMAT, SFX_PRIORITY_REPLACE);
+        break;
+        
+      case MINOR_MODE_LANDING:
+        break;
+    }
+    TARDIS.demat_lever.changed = false;
+  }
+
+  // when certain sounds end, minor mode changes.
+
+  if (TARDIS.sound_end_mode_change) {
+    if (!soundFX_playing()) {
+      if (TARDIS.minor_mode == MINOR_MODE_LANDING) {
+        TARDIS.minor_mode = MINOR_MODE_IDLE;
+        TARDIS.sound_end_mode_change = false;
+      } else if (TARDIS.minor_mode == MINOR_MODE_TAKEOFF) {
+        TARDIS.minor_mode = MINOR_MODE_FLIGHT;
+        TARDIS.sound_end_mode_change = false;
+      }
+      // other cases: no effect.
+    }
+    
+  }
+  
+}
+
+void monitor_playback_status() {
+  
   boolean playing = soundFX_playing();
   if (playing) {
     if (!already_playing) {
