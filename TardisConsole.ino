@@ -9,7 +9,7 @@
  * 
  */
 
-#define version_string "version 20210406.012"
+#define version_string "version 20210406.013"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -99,6 +99,17 @@ typedef struct {
 } Control;
 
 typedef struct {
+  int pin;
+  int value;
+  uint32_t when;
+} LfxEvent;
+
+uint32_t ULONG_MAX = 0UL - 1UL;
+
+#define LFX_EVENTS_MAX 100
+LfxEvent lfxEvents[LFX_EVENTS_MAX];
+
+typedef struct {
   int major_mode;
   int minor_mode;
   boolean sound_end_mode_change;
@@ -166,7 +177,11 @@ void setup() {
   pinMode(switch_source_major_mode, OUTPUT);
   digitalWrite(switch_source_major_mode, SWITCH_SOURCE);
   pinMode(switch_major_mode, INPUT_PULLUP);
-    
+
+  for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
+    lfxEvents[ii].pin = -1;
+    lfxEvents[ii].when = ULONG_MAX;
+  }
 }
 
 
@@ -193,20 +208,58 @@ void loop() {
 #define LFX_DEMAT 1
 #define LFX_REMAT 2
 
+boolean lightFX_addEvent(int pin, int value, uint32_t when) {
+
+  for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
+    if (lfxEvents[ii].pin == -1) {
+      lfxEvents[ii].pin = pin;
+      lfxEvents[ii].value = value;
+      lfxEvents[ii].when = when;
+      return true;
+    }
+  }
+  return false;
+}
+
+void lightFX_update() {
+
+  uint32_t now = millis();
+  
+  for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
+    if (lfxEvents[ii].pin != -1) {
+      if (now >= lfxEvents[ii].when) {
+        digitalWrite(lfxEvents[ii].pin, lfxEvents[ii].value);
+        lfxEvents[ii].pin = -1;
+        lfxEvents[ii].when = ULONG_MAX;
+      }
+    }
+  }
+}
+
 void lightFX_play(int lfx) {
+
+  uint32_t now = millis();
+  
   switch (lfx) {
 
     case LFX_DEMAT:
       digitalWrite(light_demat_bottom, LED_OFF);
-      digitalWrite(light_demat_middle, LED_ON);
-      digitalWrite(light_demat_top, LED_ON);
+      digitalWrite(light_demat_middle, LED_OFF);
+      digitalWrite(light_demat_top, LED_OFF);
+      lightFX_addEvent(light_demat_bottom, LED_ON, now + 600);
+      lightFX_addEvent(light_demat_middle, LED_ON, now + 1200);
+      lightFX_addEvent(light_demat_top,    LED_ON, now + 1800);
+      
       break;
 
     case LFX_REMAT:
       digitalWrite(light_demat_bottom, LED_ON);
-      digitalWrite(light_demat_middle, LED_OFF);
-      digitalWrite(light_demat_top, LED_OFF);
-      break;
+      digitalWrite(light_demat_middle, LED_ON);
+      digitalWrite(light_demat_top, LED_ON);
+      lightFX_addEvent(light_demat_top, LED_OFF, now + 600);
+      lightFX_addEvent(light_demat_middle, LED_OFF, now + 1200);
+      lightFX_addEvent(light_demat_bottom,    LED_OFF, now + 1800);
+     break;
       
   }
 }
@@ -348,6 +401,10 @@ void loop_tardis() {
     }
     TARDIS.demat_lever.changed = false;
   }
+
+  // ** animate lights
+  
+  lightFX_update();
 
   // note: if preferred, it's fine to run this loop a bit less frequently, e.g.:
   // delay(10);
