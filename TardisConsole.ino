@@ -9,6 +9,8 @@
  * 
  */
 
+#define version_string "version 20210406.006"
+
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
 
@@ -27,12 +29,12 @@
 
 // switches
 #define switch_demat_lever 50
-#define switch_door 52
+#define switch_door_lever 52
 #define switch_major_mode 48
 
 // switch sources (some switches connect to adjacent pins rather than to a bus)
 #define switch_source_demat_lever 51
-#define switch_source_door 53
+#define switch_source_door_lever 53
 #define switch_source_major_mode 49
 
 // analog inputs
@@ -71,23 +73,40 @@
 SoftwareSerial soundFX_serial = SoftwareSerial(SoundFX_TX, SoundFX_RX);
 Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, SoundFX_Reset);
 
-#define MAJOR_MODE_TARDIS 1
-#define MAJOR_MODE_ROCKET 2
-#define MAJOR_MODE_DEMO 0
+#define MAJOR_MODE_ROCKET   2
+#define MAJOR_MODE_DEMO     0
+#define MAJOR_MODE_TARDIS   1
+#define MAJOR_MODE_STARTUP   -1
+
+#define MINOR_MODE_IDLE     0
+#define MINOR_MODE_TAKEOFF  1
+#define MINOR_MODE_FLIGHT   2
+#define MINOR_MODE_LANDING  3
+
 
 typedef struct {
   int major_mode;
+  int minor_mode;
 } Tardis;
 
-Tardis TARDIS;
+Tardis TARDIS = {
+  .major_mode = MAJOR_MODE_DEMO,
+  .minor_mode = MINOR_MODE_IDLE
+};
+
+typedef struct {
+  int door;
+  int demat;
+  int speed;
+} Controls;
+
+Controls old = { -1, -1, -1 };
 
 // ** main functions
 
 void setup() {
 
-  // ** configure (global) TARDIS state
-
-  TARDIS.major_mode = MAJOR_MODE_DEMO;
+  TARDIS.major_mode = MAJOR_MODE_STARTUP;
   
   // ** establish (optional) serial connection with computer (for debugging etc.)
   
@@ -126,9 +145,9 @@ void setup() {
   digitalWrite(switch_source_demat_lever, SWITCH_SOURCE);
   pinMode(switch_demat_lever, INPUT_PULLUP);
 
-  pinMode(switch_source_door, OUTPUT);
-  digitalWrite(switch_source_door, SWITCH_SOURCE);
-  pinMode(switch_door, INPUT_PULLUP);
+  pinMode(switch_source_door_lever, OUTPUT);
+  digitalWrite(switch_source_door_lever, SWITCH_SOURCE);
+  pinMode(switch_door_lever, INPUT_PULLUP);
     
   pinMode(switch_source_major_mode, OUTPUT);
   digitalWrite(switch_source_major_mode, SWITCH_SOURCE);
@@ -157,22 +176,187 @@ void loop() {
 // ** support functions
 
 void test_major_mode() {
+  
   int major_mode = digitalRead(switch_major_mode);
   if (major_mode != TARDIS.major_mode) {
+    major_mode_begin(major_mode);
+  }
+}
+
+void major_mode_begin(int major_mode) {
     TARDIS.major_mode = major_mode;
     switch (TARDIS.major_mode) {
     case MAJOR_MODE_TARDIS:
+      digitalWrite(light_demat_middle, LED_OFF);
+      digitalWrite(light_demat_top, LED_OFF);
+      digitalWrite(light_demat_bottom, LED_OFF);
+      old.door = -1;
+      old.demat = -1;
+      old.speed = -1;
+      TARDIS.minor_mode = MINOR_MODE_IDLE;
       soundFX_play(SFX_KEYCLIK1);
       break;
+
     case MAJOR_MODE_ROCKET:
       soundFX_play(SFX_KEYCLIK2);
       break;
+    
     case MAJOR_MODE_DEMO:
+      digitalWrite(light_demat_bottom, LED_ON);
+      // other lights are set directly from levers in this major mode
       soundFX_play(SFX_KACHUNK);
       break;
     }
+}
+
+void loop_tardis() {
+
+  scan_controls_for_changes();
+
+  //check_for_sound_finished();
+  estimate_sound_finished();
+  
+}
+
+uint32_t approximate_sound_end_time = 0;
+#define approximate_demat_remat_sound_duration 20000
+
+void scan_controls_for_changes() {
+
+  // note: reset switch is hardwired, not handled in code.
+  // note: major mode switch is handled elsewhere; could be moved here.
+  
+  int door = digitalRead(switch_door_lever);
+  
+  if (door != old.door) {
+    //Serial.print("Door changed: ");
+    //Serial.println(door);
+   if (old.door != -1) {
+     soundFX_play(SFX_DOORS);
+   }
+   old.door = door;
+  }
+  
+  int demat = digitalRead(switch_demat_lever);
+
+  if (demat != old.demat) {
+    Serial.print("Demat changed: ");
+    Serial.println(demat);
+
+    if (old.demat != -1) {
+        
+      switch (TARDIS.minor_mode) {
+        case MINOR_MODE_IDLE:
+          TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
+          soundFX_play(SFX_DEMAT);
+          approximate_sound_end_time = millis() + approximate_demat_remat_sound_duration;
+          Serial.println("Dematerializing...");
+          break;
+  
+        case MINOR_MODE_TAKEOFF:
+          Serial.println("Demat toggled while dematting, ignoring");
+          break;
+  
+        case MINOR_MODE_FLIGHT:
+          TARDIS.minor_mode = MINOR_MODE_LANDING;
+          soundFX_play(SFX_REMAT);
+          approximate_sound_end_time = millis() + approximate_demat_remat_sound_duration;
+          Serial.println("...Rematerializing.");
+          break;
+  
+        case MINOR_MODE_LANDING:
+          Serial.println("Remat toggled while rematting, ignoring");
+          break;
+      }
+    }
+    
+    old.demat = demat;
+    
+    Serial.print("minor mode ");
+    Serial.println(TARDIS.minor_mode);
     
   }
+  
+  int speed = analogRead(knob_speed);
+
+  if (abs(speed - old.speed) > 2) {
+    //Serial.print("Speed changed: ");
+    //Serial.println(speed);
+    old.speed = speed;
+  }
+}
+
+uint32_t next_sound_check_time = 0;
+uint32_t sound_check_interval = 1000;
+
+void estimate_sound_finished() {
+  // don't check too often
+  uint32_t current_time = millis();
+  if (current_time < next_sound_check_time) {
+    return;
+  }
+
+  if (current_time < approximate_sound_end_time) {
+    return;
+  }
+
+  
+    switch (TARDIS.minor_mode) {
+      case MINOR_MODE_TAKEOFF:
+        TARDIS.minor_mode = MINOR_MODE_FLIGHT;
+        Serial.println("Demat complete.");
+        break;
+      case MINOR_MODE_LANDING:
+        TARDIS.minor_mode = MINOR_MODE_IDLE;
+        Serial.println("Remat complete.");
+        break;
+    }
+    
+}
+
+// (not recommended)
+void check_for_sound_finished() {
+
+  // don't check too often
+  uint32_t current_time = millis();
+  if (current_time < next_sound_check_time) {
+    return;
+  }
+  
+  uint32_t current;
+  uint32_t total;
+
+  boolean result = soundFX_board.trackSize(&current, &total);
+  /*
+  Serial.print(result);
+  Serial.print(" -- ");
+  Serial.print(current);
+  Serial.print(" -- ");
+  Serial.print(total);
+  Serial.print(" -- ");Serial.println("");
+        
+  Serial.print((total - current));
+  Serial.println();
+  */
+  if (result == 0) {
+    switch (total) {
+      case 168975: // demat
+          TARDIS.minor_mode = MINOR_MODE_FLIGHT;
+          Serial.println("...demat complete.");
+          break;
+
+      case 88285: // remat
+          TARDIS.minor_mode = MINOR_MODE_IDLE;
+          Serial.println("...remat complete.");
+          break;
+
+      default: // ??
+         Serial.println("other sound complete:");
+         Serial.println(total);
+    }
+  }
+
+  next_sound_check_time = current_time + sound_check_interval;
 }
 
 void print_hello_serial() {
@@ -182,12 +366,19 @@ void print_hello_serial() {
   Serial.println("==  TARDIS Console  ==");
   Serial.println("======================");
   Serial.println("");
-  Serial.println("version 20210406.005");
+  Serial.println(version_string);
 }
 
 void soundFX_play(uint8_t file_number) {
     if (! soundFX_board.playTrack((uint8_t)file_number) ) {
         Serial.println("Failed to play sound?");
+        Serial.println(file_number);
+    }
+}
+
+void soundFX_stop() {
+    if (! soundFX_board.stop() ) {
+        Serial.println("Failed to stop sound");
     }
 }
 
@@ -222,7 +413,7 @@ void loop_demo() {
   // ** proof-of-concept loop, responds crudely to a few controls
   
   digitalWrite(light_demat_middle, digitalRead(switch_demat_lever));
-  digitalWrite(light_demat_top, digitalRead(switch_door));
+  digitalWrite(light_demat_top, digitalRead(switch_door_lever));
   
   int val = analogRead(knob_speed);
   if (abs(val - old_speed) > 2) {
@@ -232,7 +423,7 @@ void loop_demo() {
     old_speed = val;
   }
   
-  int door = digitalRead(switch_door);
+  int door = digitalRead(switch_door_lever);
   if (door != old_door) {
     Serial.print("  Door: ");
     Serial.print(door);
@@ -253,11 +444,6 @@ void loop_demo() {
     printed_something = 0;
   }
 
-}
-
-void loop_tardis() {
-    Serial.println("tardis...");
-    delay(1000);
 }
 
 void loop_rocket() {
