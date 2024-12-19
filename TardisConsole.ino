@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210406.015"
+#define version_string "version 20210406.016"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -107,9 +107,13 @@ typedef struct {
 } LfxEvent;
 
 uint32_t ULONG_MAX = 0UL - 1UL;
+uint32_t LFX_NEVER = ULONG_MAX;
 
 #define LFX_EVENTS_MAX 100
 LfxEvent lfxEvents[LFX_EVENTS_MAX];
+
+#define LFX_PRIORITY_MERGE 0
+#define LFX_PRIORITY_REPLACE 1
 
 typedef struct {
   int major_mode;
@@ -197,7 +201,7 @@ void setup() {
   
   for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
     lfxEvents[ii].pin = -1;
-    lfxEvents[ii].when = ULONG_MAX;
+    lfxEvents[ii].when = LFX_NEVER;
   }
 }
 
@@ -225,8 +229,16 @@ void loop() {
 #define LFX_DEMAT 1
 #define LFX_REMAT 2
 
-boolean lightFX_addEvent(int pin, int value, uint32_t when) {
+boolean lightFX_addEvent(int pin, int value, uint32_t when, boolean priority) {
 
+  if (priority == LFX_PRIORITY_REPLACE) {
+    for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
+      if (lfxEvents[ii].pin == pin) {
+        lfxEvents[ii].pin = -1;
+        lfxEvents[ii].when = LFX_NEVER;
+      }
+    }
+  }
   for (int ii = 0; ii < LFX_EVENTS_MAX; ii++) {
     if (lfxEvents[ii].pin == -1) {
       lfxEvents[ii].pin = pin;
@@ -247,13 +259,13 @@ void lightFX_update() {
       if (now >= lfxEvents[ii].when) {
         digitalWrite(lfxEvents[ii].pin, lfxEvents[ii].value);
         lfxEvents[ii].pin = -1;
-        lfxEvents[ii].when = ULONG_MAX;
+        lfxEvents[ii].when = LFX_NEVER;
       }
     }
   }
 }
 
-void lightFX_play(int lfx) {
+void lightFX_play(int lfx, boolean priority) {
 
   uint32_t now = millis();
 
@@ -263,9 +275,19 @@ void lightFX_play(int lfx) {
       digitalWrite(light_demat_bottom, LED_OFF);
       digitalWrite(light_demat_middle, LED_OFF);
       digitalWrite(light_demat_top, LED_OFF);
-      lightFX_addEvent(light_demat_bottom, LED_ON, now + 600);
-      lightFX_addEvent(light_demat_middle, LED_ON, now + 1200);
-      lightFX_addEvent(light_demat_top,    LED_ON, now + 1800);
+      lightFX_addEvent(light_demat_bottom, LED_ON, now + 600, priority);
+      lightFX_addEvent(light_demat_middle, LED_ON, now + 1000, priority);
+      lightFX_addEvent(light_demat_top,    LED_ON, now + 1400, priority);
+
+      for (int ii = 0; ii < 6; ii++) {
+        int pulse_time = 4000 + 2000 * ii;
+        lightFX_addEvent(light_demat_bottom, LED_OFF, now +  0 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_bottom, LED_ON, now +  300 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_middle, LED_OFF, now + 100 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_middle, LED_ON, now +  400 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_top,    LED_OFF, now + 200 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_top,    LED_ON, now +  600 + pulse_time, LFX_PRIORITY_MERGE);
+      }
 
       break;
 
@@ -273,9 +295,9 @@ void lightFX_play(int lfx) {
       digitalWrite(light_demat_bottom, LED_ON);
       digitalWrite(light_demat_middle, LED_ON);
       digitalWrite(light_demat_top, LED_ON);
-      lightFX_addEvent(light_demat_top, LED_OFF, now + 600);
-      lightFX_addEvent(light_demat_middle, LED_OFF, now + 1200);
-      lightFX_addEvent(light_demat_bottom,    LED_OFF, now + 1800);
+      lightFX_addEvent(light_demat_top, LED_OFF, now + 600, priority);
+      lightFX_addEvent(light_demat_middle, LED_OFF, now + 1200, priority);
+      lightFX_addEvent(light_demat_bottom,    LED_OFF, now + 1800, priority);
       break;
 
   }
@@ -402,7 +424,7 @@ void loop_tardis() {
         TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
         TARDIS.sound_end_mode_change = true;
         Serial.println("Demat...");
-        lightFX_play(LFX_DEMAT);
+        lightFX_play(LFX_DEMAT, LFX_PRIORITY_REPLACE);
         soundFX_play(soundset[TARDIS.major_mode].takeoff, SFX_PRIORITY_REPLACE);
         next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
@@ -415,7 +437,7 @@ void loop_tardis() {
         Serial.println("Remat...");
         TARDIS.minor_mode = MINOR_MODE_LANDING;
         TARDIS.sound_end_mode_change = true;
-        lightFX_play(LFX_REMAT);
+        lightFX_play(LFX_REMAT, LFX_PRIORITY_REPLACE);
         soundFX_play(soundset[TARDIS.major_mode].landing, SFX_PRIORITY_REPLACE);
         next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
