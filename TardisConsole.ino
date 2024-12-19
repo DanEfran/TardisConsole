@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210406.016"
+#define version_string "version 20210406.017"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -265,22 +265,24 @@ void lightFX_update() {
   }
 }
 
-void lightFX_play(int lfx, boolean priority) {
+void lightFX_play(int lfx) {
 
   uint32_t now = millis();
-
+  int ii;
+  int pulse_time;
+  
   switch (lfx) {
 
     case LFX_DEMAT:
       digitalWrite(light_demat_bottom, LED_OFF);
       digitalWrite(light_demat_middle, LED_OFF);
       digitalWrite(light_demat_top, LED_OFF);
-      lightFX_addEvent(light_demat_bottom, LED_ON, now + 600, priority);
-      lightFX_addEvent(light_demat_middle, LED_ON, now + 1000, priority);
-      lightFX_addEvent(light_demat_top,    LED_ON, now + 1400, priority);
+      lightFX_addEvent(light_demat_bottom, LED_ON, now + 600, LFX_PRIORITY_REPLACE);
+      lightFX_addEvent(light_demat_middle, LED_ON, now + 1000, LFX_PRIORITY_REPLACE);
+      lightFX_addEvent(light_demat_top,    LED_ON, now + 1400, LFX_PRIORITY_REPLACE);
 
-      for (int ii = 0; ii < 6; ii++) {
-        int pulse_time = 4000 + 2000 * ii;
+      for (ii = 0; ii < 6; ii++) {
+        pulse_time = 4000 + 2000 * ii;
         lightFX_addEvent(light_demat_bottom, LED_OFF, now +  0 + pulse_time, LFX_PRIORITY_MERGE);
         lightFX_addEvent(light_demat_bottom, LED_ON, now +  300 + pulse_time, LFX_PRIORITY_MERGE);
         lightFX_addEvent(light_demat_middle, LED_OFF, now + 100 + pulse_time, LFX_PRIORITY_MERGE);
@@ -295,9 +297,21 @@ void lightFX_play(int lfx, boolean priority) {
       digitalWrite(light_demat_bottom, LED_ON);
       digitalWrite(light_demat_middle, LED_ON);
       digitalWrite(light_demat_top, LED_ON);
-      lightFX_addEvent(light_demat_top, LED_OFF, now + 600, priority);
-      lightFX_addEvent(light_demat_middle, LED_OFF, now + 1200, priority);
-      lightFX_addEvent(light_demat_bottom,    LED_OFF, now + 1800, priority);
+
+      pulse_time = 16800;
+      lightFX_addEvent(light_demat_top, LED_OFF, now + 600 + pulse_time, LFX_PRIORITY_REPLACE);
+      lightFX_addEvent(light_demat_middle, LED_OFF, now + 1200 + pulse_time, LFX_PRIORITY_REPLACE);
+      lightFX_addEvent(light_demat_bottom,    LED_OFF, now + 1800 + pulse_time, LFX_PRIORITY_REPLACE);
+      
+      for (ii = 0; ii < 9; ii++) {
+        pulse_time = 0 + 2000 * ii;
+        lightFX_addEvent(light_demat_top, LED_OFF, now +  0 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_top, LED_ON, now +  300 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_middle, LED_OFF, now + 100 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_middle, LED_ON, now +  400 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_bottom,    LED_OFF, now + 200 + pulse_time, LFX_PRIORITY_MERGE);
+        lightFX_addEvent(light_demat_bottom,    LED_ON, now +  600 + pulse_time, LFX_PRIORITY_MERGE);
+      }
       break;
 
   }
@@ -380,7 +394,7 @@ void loop_tardis() {
           break;
         case MINOR_MODE_STARTUP:
           Serial.println("...ready.");
-          TARDIS.minor_mode = MINOR_MODE_IDLE;
+          TARDIS.minor_mode = MINOR_MODE_FLIGHT; // @#@t was IDLE
           TARDIS.sound_end_mode_change = false;
           break;
       }
@@ -424,7 +438,7 @@ void loop_tardis() {
         TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
         TARDIS.sound_end_mode_change = true;
         Serial.println("Demat...");
-        lightFX_play(LFX_DEMAT, LFX_PRIORITY_REPLACE);
+        lightFX_play(LFX_DEMAT);
         soundFX_play(soundset[TARDIS.major_mode].takeoff, SFX_PRIORITY_REPLACE);
         next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
@@ -437,7 +451,7 @@ void loop_tardis() {
         Serial.println("Remat...");
         TARDIS.minor_mode = MINOR_MODE_LANDING;
         TARDIS.sound_end_mode_change = true;
-        lightFX_play(LFX_REMAT, LFX_PRIORITY_REPLACE);
+        lightFX_play(LFX_REMAT);
         soundFX_play(soundset[TARDIS.major_mode].landing, SFX_PRIORITY_REPLACE);
         next_sound_check = current_time + SOUND_CHECK_DELAY;
         break;
