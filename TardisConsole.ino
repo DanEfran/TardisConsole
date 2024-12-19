@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210407.021"
+#define version_string "version 20210407.022"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -55,6 +55,11 @@
 
 // analog inputs
 #define knob_speed A0
+
+// analog (pwm) outputs
+
+#define panel_B_panel_meter 7
+
 
 // ** sounds
 
@@ -277,6 +282,8 @@ void setup() {
   pinMode(switch_fast_return, INPUT_PULLUP);
 
   pinMode(switch_plinth_big_square_button, INPUT_PULLUP);
+
+  pinMode(panel_B_panel_meter, OUTPUT); // PWM
 
   // ** prepare to animate lights
   
@@ -620,9 +627,16 @@ void loop_tardis() {
                                                                                                }
 
   if (TARDIS.speed_knob.changed) {
+    TARDIS.speed_knob.changed = false;
+
+    float megga_watts = (255.0 * (TARDIS.speed_knob.value / 1024.0));
+    analogWrite(panel_B_panel_meter, (int)(255 - megga_watts));
+    
     Serial.print("Speed Knob: ");
     Serial.println(TARDIS.speed_knob.value);
-    TARDIS.speed_knob.changed = false;
+    Serial.print("  -> Megga-Watts: ");
+    Serial.println((int)(255 - megga_watts));
+    // note: 255, or 100% pwm, only drives this panel meter to 75%.
   }
 
   // ** animate lights
