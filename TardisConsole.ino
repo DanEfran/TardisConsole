@@ -38,7 +38,22 @@
 
 // ** sounds
 
-#define sound_startup 15
+#define SFX_DOORS 0
+#define SFX_DEMAT 1
+#define SFX_REMAT 2
+#define SFX_BLASTOFF 3
+#define SFX_LANDING 4
+#define SFX_CLOISTER 5
+#define SFX_OLDHUM 6
+#define SFX_OLDCLOIS 7
+#define SFX_HUM 8
+#define SFX_6BEEPS 9
+#define SFX_LOWPOWER 10
+#define SFX_KACHUNK 11
+#define SFX_KEYCLIK1 12
+#define SFX_KEYCLIK2 13
+
+#define sound_startup SFX_KEYCLIK1
 
 // ** other constants
 
@@ -61,8 +76,11 @@ void setup() {
   // ** establish (optional) serial connection with computer (for debugging etc.)
   
   Serial.begin(115200);
+  
   Serial.println("");
-  Serial.println("=== TARDIS Console ===");
+  Serial.println("======================");
+  Serial.println("==  TARDIS Console  ==");
+  Serial.println("======================");
   Serial.println("");
 
   // ** establish connection with sound effects board and reset it
@@ -130,7 +148,10 @@ void soundFX_list_files() {
       Serial.print("\tsize: "); Serial.println(soundFX_board.fileSize(f));
     }
     
+    Serial.println();
     Serial.println("========================");
+    Serial.println();
+    
 }
     
 // state tracking for demo_loop
