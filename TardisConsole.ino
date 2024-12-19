@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210407.024"
+#define version_string "version 20210407.025"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -660,8 +660,10 @@ void loop_tardis() {
     if (megga_volts > (max_megga_volts * 0.6)) {
       // in the RED ZONE
       digitalWrite(light_panel_B_overload, LED_ON);
+      //Serial.println("(Total Power overload.)");
     } else {
       digitalWrite(light_panel_B_overload, LED_OFF);
+      //Serial.println("(Total Power normal load.)");
     }
     
   }
