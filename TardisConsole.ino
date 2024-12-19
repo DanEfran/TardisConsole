@@ -9,7 +9,7 @@
  * 
  */
 
-#define version_string "version 20210406.010"
+#define version_string "version 20210406.011"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -81,8 +81,9 @@ Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, S
 #define MAJOR_MODE_ROCKET   2
 #define MAJOR_MODE_DEMO     0
 #define MAJOR_MODE_TARDIS   1
-#define MAJOR_MODE_STARTUP   -1
+#define MAJOR_MODE_STARTUP  -1
 
+#define MINOR_MODE_STARTUP  -1
 #define MINOR_MODE_IDLE     0
 #define MINOR_MODE_TAKEOFF  1
 #define MINOR_MODE_FLIGHT   2
@@ -135,7 +136,7 @@ void setup() {
 
   // ** play a startup sound
 
-  soundFX_play(sound_startup, SFX_PRIORITY_HIGHEST);
+  //soundFX_play(sound_startup, SFX_PRIORITY_HIGHEST);
 
   // ** configure Lights (LED-driving output pins)
   
@@ -166,7 +167,7 @@ void setup() {
 
 
 void loop() {
-
+      
   test_major_mode();
   
   switch (TARDIS.major_mode) {
@@ -180,6 +181,7 @@ void loop() {
       loop_demo();
       break;
   }
+
 }
 
 // ** support functions
@@ -204,15 +206,22 @@ void major_mode_begin(int major_mode) {
       digitalWrite(light_demat_bottom, LED_OFF);
       TARDIS.door_lever.value = -1;
       TARDIS.door_lever.changed = false;
-      TARDIS.minor_mode = MINOR_MODE_IDLE;
+      TARDIS.minor_mode = MINOR_MODE_STARTUP;
+      Serial.println("TARDIS Startup...");
       soundFX_play(SFX_6BEEPS, SFX_PRIORITY_HIGHEST);  ///      soundFX_play(SFX_KEYCLIK1, SFX_PRIORITY_HIGHEST);
+      TARDIS.sound_end_mode_change = true;
+      delay(200); // allow sound to start before polling for it to stop
       break;
 
     case MAJOR_MODE_ROCKET:
+    
+      Serial.println("Rocket Startup...");
       soundFX_play(SFX_KEYCLIK2, SFX_PRIORITY_HIGHEST);
       break;
     
     case MAJOR_MODE_DEMO:
+    
+      Serial.println("Self-Test Startup...");
       digitalWrite(light_demat_bottom, LED_ON);
       // other lights are set directly from levers in this major mode
       soundFX_play(SFX_KACHUNK, SFX_PRIORITY_HIGHEST);
@@ -232,16 +241,23 @@ void loop_tardis() {
   if (TARDIS.sound_end_mode_change && (current_time > next_sound_check)) {
     next_sound_check = current_time + 500; // 100 minimum! slower is fine.
     if (!soundFX_playing()) {
-      if (TARDIS.minor_mode == MINOR_MODE_LANDING) {
-        Serial.println("...landed.");
-        TARDIS.minor_mode = MINOR_MODE_IDLE;
-        TARDIS.sound_end_mode_change = false;
-      } else if (TARDIS.minor_mode == MINOR_MODE_TAKEOFF) {
-        Serial.println("...flying.");
-        TARDIS.minor_mode = MINOR_MODE_FLIGHT;
-        TARDIS.sound_end_mode_change = false;
+      switch (TARDIS.minor_mode) {
+        case MINOR_MODE_LANDING:
+          Serial.println("...landed.");
+          TARDIS.minor_mode = MINOR_MODE_IDLE;
+          TARDIS.sound_end_mode_change = false;
+          break;
+        case MINOR_MODE_TAKEOFF:
+          Serial.println("...flying.");
+          TARDIS.minor_mode = MINOR_MODE_FLIGHT;
+          TARDIS.sound_end_mode_change = false;
+          break;
+        case MINOR_MODE_STARTUP:
+          Serial.println("...ready.");
+          TARDIS.minor_mode = MINOR_MODE_IDLE;
+          TARDIS.sound_end_mode_change = false;
+          break;
       }
-      // other cases: no effect.
     }  
   }
   
@@ -302,7 +318,10 @@ void loop_tardis() {
     }
     TARDIS.demat_lever.changed = false;
   }
-    
+
+  // note: if preferred, it's fine to run this loop a bit less frequently, e.g.:
+  // delay(10);
+  
 }
 
 void monitor_playback_status() {
