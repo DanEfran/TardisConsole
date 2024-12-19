@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210407.023"
+#define version_string "version 20210407.024"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -17,8 +17,8 @@
 // ** pin assignments
 
 // sound effects board communication
-#define SoundFX_TX 12
-#define SoundFX_RX 13
+#define SoundFX_TX 11
+#define SoundFX_RX 12
 #define SoundFX_Reset 14
 #define SoundFX_Active 15
 
@@ -33,6 +33,8 @@
 
 #define light_panel_A_warning 35
 #define light_panel_B_overload 37
+
+#define light_arduino_builtin LED_BUILTIN
 
 // note: big square button's light is 12v; we can't drive it directly.
 // someday we might add a transistor but it's just disconnected for now.
@@ -290,6 +292,10 @@ void setup() {
   pinMode(switch_plinth_big_square_button, INPUT_PULLUP);
 
   pinMode(panel_B_panel_meter, OUTPUT); // PWM
+
+  // turn off arduino's on-board LED to save power
+  pinMode(light_arduino_builtin, OUTPUT);
+  digitalWrite(light_arduino_builtin, 0);
 
   // ** prepare to animate lights
   
@@ -575,6 +581,7 @@ void loop_tardis() {
     soundFX_play(soundset[TARDIS.major_mode].doors, SFX_PRIORITY_OPTIONAL);
     lightFX_play(LFX_DOORS);
     TARDIS.door_lever.changed = false;
+    
   }
 
   if (TARDIS.demat_lever.changed) {
