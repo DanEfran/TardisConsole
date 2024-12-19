@@ -12,73 +12,141 @@
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
 
+// ** pin assignments
 
-#define SFX_TX 12
-#define SFX_RX 13
-#define SFX_RST 14
-#define SFX_ACT 15
+// sound effects board communication
+#define SoundFX_TX 12
+#define SoundFX_RX 13
+#define SoundFX_Reset 14
+#define SoundFX_Active 15
 
-SoftwareSerial ss = SoftwareSerial(SFX_TX, SFX_RX);
-Adafruit_Soundboard sfx = Adafruit_Soundboard(&ss, NULL, SFX_RST);
+// lights
+#define light_demat_bottom 38
+#define light_demat_middle 40
+#define light_demat_top 42
+
+// switches
+#define switch_demat_lever 50
+#define switch_door 52
+
+// switch sources (some switches connect to adjacent pins rather than to a bus)
+#define switch_source_demat_lever 51
+#define switch_source_door 53
+
+// analog inputs
+#define knob_speed A0
+
+// ** sounds
+
+#define sound_startup 15
+
+// ** other constants
+
+// LEDs are common anode; set cathode LOW-to-glow
+#define LED_OFF HIGH 
+#define LED_ON LOW 
+// switches are "closed" = LOW because "open" = INPUT_PULLUP
+// switches not physically connectable to a GND pin can (equivalently) connect to a SWITCH_SOURCE output pin
+#define SWITCH_SOURCE LOW 
+
+// ** global objects & data
+
+SoftwareSerial soundFX_serial = SoftwareSerial(SoundFX_TX, SoundFX_RX);
+Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, SoundFX_Reset);
+
+// ** main functions
 
 void setup() {
-  
-  pinMode(38, OUTPUT);
-  pinMode(40, OUTPUT);
-  pinMode(42, OUTPUT);
-  digitalWrite(38, HIGH); // bottom demat light
-  digitalWrite(40, HIGH); // middle demat light
-  digitalWrite(42, HIGH); // top demat light
-  
-  pinMode(51, OUTPUT);
-  pinMode(53, OUTPUT);
-  digitalWrite(51, LOW);
-  digitalWrite(53, LOW);
-  
-  pinMode(52, INPUT_PULLUP);
-  pinMode(50, INPUT_PULLUP);
+
+  // ** establish (optional) serial connection with computer (for debugging etc.)
   
   Serial.begin(115200);
   Serial.println("");
   Serial.println("=== TARDIS Console ===");
+  Serial.println("");
+
+  // ** establish connection with sound effects board and reset it
+  
+  soundFX_serial.begin(9600);
     
-  ss.begin(9600);
-    
-  if (!sfx.reset()) {
+  if (!soundFX_board.reset()) {
     Serial.println("SFX board not found");
   } else {
     Serial.println("SFX board found");
-    uint8_t files = sfx.listFiles();
+    soundFX_list_files();
+  }
+
+  // ** play a startup sound
+  
+  if (! soundFX_board.playTrack((uint8_t)sound_startup) ) {
+        Serial.println("Failed to play startup sound?");
+  }
+
+  // ** configure Lights (LED-driving output pins)
+  
+
+  pinMode(light_demat_bottom, OUTPUT);
+  pinMode(light_demat_middle, OUTPUT);
+  pinMode(light_demat_top, OUTPUT);
+
+  digitalWrite(light_demat_bottom, LED_OFF); // bottom demat light
+  digitalWrite(light_demat_middle, LED_OFF); // middle demat light
+  digitalWrite(light_demat_top, LED_OFF); // top demat light
+
+  // ** configure switches (buttons, levers, etc.)
+  
+  pinMode(switch_source_demat_lever, OUTPUT);
+  pinMode(switch_source_door, OUTPUT);
+
+  digitalWrite(switch_source_demat_lever, SWITCH_SOURCE);
+  digitalWrite(switch_source_door, SWITCH_SOURCE);
+  
+  pinMode(switch_door, INPUT_PULLUP);
+  pinMode(switch_demat_lever, INPUT_PULLUP);
+
+}
+
+
+void loop() {
+
+  // respond crudely to a few controls
+  demo_loop();
+}
+
+// ** support functions
+
+void soundFX_list_files() {
+  
+    uint8_t files = soundFX_board.listFiles();
+    
     Serial.println("SFX File Listing");
     Serial.println("========================");
     Serial.println();
     Serial.print("Found "); Serial.print(files); Serial.println(" Files");
+    
     for (uint8_t f=0; f<files; f++) {
       Serial.print(f); 
-      Serial.print("\tname: "); Serial.print(sfx.fileName(f));
-      Serial.print("\tsize: "); Serial.println(sfx.fileSize(f));
+      Serial.print("\tname: "); Serial.print(soundFX_board.fileName(f));
+      Serial.print("\tsize: "); Serial.println(soundFX_board.fileSize(f));
     }
+    
     Serial.println("========================");
-  }
-
-  int n = 15;
-  if (! sfx.playTrack((uint8_t)n) ) {
-        Serial.println("Failed to play track?");
-  }
-  
 }
-
+    
+// state tracking for demo_loop
 int old_speed = 0;
 int old_door = 3;
 int old_demat = 3;
 int printed_something = 0;
 
-void loop() {
+void demo_loop() {
+
+  // ** proof-of-concept loop, responds crudely to a few controls
   
-  digitalWrite(40, digitalRead(50));
-  digitalWrite(42, digitalRead(52));
+  digitalWrite(light_demat_middle, digitalRead(switch_demat_lever));
+  digitalWrite(light_demat_top, digitalRead(switch_door));
   
-  int val = analogRead(A0);
+  int val = analogRead(knob_speed);
   if (abs(val - old_speed) > 2) {
     Serial.print("Speed: ");
     Serial.print(val);
@@ -86,7 +154,7 @@ void loop() {
     old_speed = val;
   }
   
-  int door = digitalRead(52);
+  int door = digitalRead(switch_door);
   if (door != old_door) {
     Serial.print("  Door: ");
     Serial.print(door);
@@ -94,7 +162,7 @@ void loop() {
   }
   old_door = door;
   
-  int demat = digitalRead(50);
+  int demat = digitalRead(switch_demat_lever);
   if (demat != old_demat) {
     Serial.print("  Demat: ");
     Serial.print(demat);
