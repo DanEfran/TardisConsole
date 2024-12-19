@@ -9,7 +9,7 @@
 
 */
 
-#define version_string "version 20210406.017"
+#define version_string "version 20210406.018"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -394,7 +394,7 @@ void loop_tardis() {
           break;
         case MINOR_MODE_STARTUP:
           Serial.println("...ready.");
-          TARDIS.minor_mode = MINOR_MODE_FLIGHT; // @#@t was IDLE
+          TARDIS.minor_mode = MINOR_MODE_IDLE
           TARDIS.sound_end_mode_change = false;
           break;
       }
