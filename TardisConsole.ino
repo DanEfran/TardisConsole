@@ -28,10 +28,12 @@
 // switches
 #define switch_demat_lever 50
 #define switch_door 52
+#define switch_major_mode 48
 
 // switch sources (some switches connect to adjacent pins rather than to a bus)
 #define switch_source_demat_lever 51
 #define switch_source_door 53
+#define switch_source_major_mode 49
 
 // analog inputs
 #define knob_speed A0
@@ -69,19 +71,28 @@
 SoftwareSerial soundFX_serial = SoftwareSerial(SoundFX_TX, SoundFX_RX);
 Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, SoundFX_Reset);
 
+#define MAJOR_MODE_TARDIS 1
+#define MAJOR_MODE_ROCKET 2
+#define MAJOR_MODE_DEMO 0
+
+typedef struct {
+  int major_mode;
+} Tardis;
+
+Tardis TARDIS;
+
 // ** main functions
 
 void setup() {
 
+  // ** configure (global) TARDIS state
+
+  TARDIS.major_mode = MAJOR_MODE_DEMO;
+  
   // ** establish (optional) serial connection with computer (for debugging etc.)
   
   Serial.begin(115200);
-  
-  Serial.println("");
-  Serial.println("======================");
-  Serial.println("==  TARDIS Console  ==");
-  Serial.println("======================");
-  Serial.println("");
+  print_hello_serial();
 
   // ** establish connection with sound effects board and reset it
   
@@ -95,43 +106,90 @@ void setup() {
   }
 
   // ** play a startup sound
-  
-  if (! soundFX_board.playTrack((uint8_t)sound_startup) ) {
-        Serial.println("Failed to play startup sound?");
-  }
+
+  soundFX_play(sound_startup);
 
   // ** configure Lights (LED-driving output pins)
   
-
   pinMode(light_demat_bottom, OUTPUT);
-  pinMode(light_demat_middle, OUTPUT);
-  pinMode(light_demat_top, OUTPUT);
+  digitalWrite(light_demat_bottom, LED_OFF);
 
-  digitalWrite(light_demat_bottom, LED_OFF); // bottom demat light
-  digitalWrite(light_demat_middle, LED_OFF); // middle demat light
-  digitalWrite(light_demat_top, LED_OFF); // top demat light
+  pinMode(light_demat_middle, OUTPUT);
+  digitalWrite(light_demat_middle, LED_OFF);
+  
+  pinMode(light_demat_top, OUTPUT);
+  digitalWrite(light_demat_top, LED_OFF);
 
   // ** configure switches (buttons, levers, etc.)
   
   pinMode(switch_source_demat_lever, OUTPUT);
-  pinMode(switch_source_door, OUTPUT);
-
   digitalWrite(switch_source_demat_lever, SWITCH_SOURCE);
-  digitalWrite(switch_source_door, SWITCH_SOURCE);
-  
-  pinMode(switch_door, INPUT_PULLUP);
   pinMode(switch_demat_lever, INPUT_PULLUP);
 
+  pinMode(switch_source_door, OUTPUT);
+  digitalWrite(switch_source_door, SWITCH_SOURCE);
+  pinMode(switch_door, INPUT_PULLUP);
+    
+  pinMode(switch_source_major_mode, OUTPUT);
+  digitalWrite(switch_source_major_mode, SWITCH_SOURCE);
+  pinMode(switch_major_mode, INPUT_PULLUP);
+    
 }
 
 
 void loop() {
 
-  // respond crudely to a few controls
-  demo_loop();
+  test_major_mode();
+  
+  switch (TARDIS.major_mode) {
+    case MAJOR_MODE_TARDIS:
+      loop_tardis();
+      break;
+    case MAJOR_MODE_ROCKET:
+      loop_rocket();
+      break;
+    case MAJOR_MODE_DEMO:
+      loop_demo();
+      break;
+  }
 }
 
 // ** support functions
+
+void test_major_mode() {
+  int major_mode = digitalRead(switch_major_mode);
+  if (major_mode != TARDIS.major_mode) {
+    TARDIS.major_mode = major_mode;
+    switch (TARDIS.major_mode) {
+    case MAJOR_MODE_TARDIS:
+      soundFX_play(SFX_KEYCLIK1);
+      break;
+    case MAJOR_MODE_ROCKET:
+      soundFX_play(SFX_KEYCLIK2);
+      break;
+    case MAJOR_MODE_DEMO:
+      soundFX_play(SFX_KACHUNK);
+      break;
+    }
+    
+  }
+}
+
+void print_hello_serial() {
+  
+  Serial.println("");
+  Serial.println("======================");
+  Serial.println("==  TARDIS Console  ==");
+  Serial.println("======================");
+  Serial.println("");
+  Serial.println("version 20210406.005");
+}
+
+void soundFX_play(uint8_t file_number) {
+    if (! soundFX_board.playTrack((uint8_t)file_number) ) {
+        Serial.println("Failed to play sound?");
+    }
+}
 
 void soundFX_list_files() {
   
@@ -151,16 +209,15 @@ void soundFX_list_files() {
     Serial.println();
     Serial.println("========================");
     Serial.println();
-    
 }
     
-// state tracking for demo_loop
+// state tracking for loop_demo
 int old_speed = 0;
 int old_door = 3;
 int old_demat = 3;
 int printed_something = 0;
 
-void demo_loop() {
+void loop_demo() {
 
   // ** proof-of-concept loop, responds crudely to a few controls
   
@@ -198,6 +255,15 @@ void demo_loop() {
 
 }
 
+void loop_tardis() {
+    Serial.println("tardis...");
+    delay(1000);
+}
+
+void loop_rocket() {
+    Serial.println("rocket...");
+    delay(1000);  
+}
 
 
 /* -- NOTES --
