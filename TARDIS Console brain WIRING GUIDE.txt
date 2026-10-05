@@ -1,0 +1,330 @@
+ 
+ Dan's TARDIS Console
+ 2021 Upgrade
+ Arduino Mega 2560
+ Master Wiring Guide
+ 
+ 
+ 
+ ------
+ Part 1
+ ------
+ 
+Preliminary wiring, initial installation of upgrades...wiring subject to change.
+ 
+ 
+ - POWER pins:
+  - GND: BLACK to Console Reset button (below Panel B, between mouse and keyboard supports)
+  - GND: BLACK to patchblock GND BUS
+  - 5V: RED to patchblock 5V BUS
+  - RESET: BROWN from Console Reset button
+  
+ - PWM pins:
+  - 11: YELLOW to audio player TX
+  - 12: GREEN to audio player RX
+  - 13: built-in LED (off)
+  - GND: BROWN to audio player MODE
+  
+    - 0, 1, 2, 3, 4, 5, 6, 7: R,O,Y,G,B,V,Brown,Black of Rainbow One to patchblock: 
+										Black 7: panel meter (+)
+
+ - COMMUNICATION pins
+  - 14: PURPLE to audio player RESET
+  - 15: YELLOW to audio player ACTIVE
+  - 16: RED to Console Major Mode button (below panel B, next to Reset, marked Power)
+  - 17: ORANGE from Console Major Mode button
+  
+ - DIGITAL pins
+  - 52, 53: Door Lever
+  - 50, 51: Demat Lever
+  - 48, 49: Major Mode button
+										
+  - 39, 41, 43, 45: G, Black; Y, O: Lockout Key; Fast Return Switch
+  - 23,25,27,29,21,33,35,37: Black, Brown, R, O, Y, G, B, V Rainbow Two to patchblock:
+										Black, Brown, Red 23, 25, 27:demat lights
+										Orange, Yellow 29, 31: red light, green light
+										Green 33: Plinth Big Square Button
+										Blue 35: panel A warning light
+										Violet 37: (panel B panel meter) overload light
+										
+  
+ - ANALOG IN pins
+  - A0...A4: O, Y, G, B, V, of 5-pin Analog Rainbow Three to patchblock
+  - A0: Orange of rainbow Three to BROWN of Speed Knob
+  
+ 
+ - PATCHBLOCK
+ 
+  - BUS +/-: RED, BLACK to Audio Power +/-
+  - BUS GND: BLACK: to TARDIS Reset Button
+  - BUS 5V: resistors to RED, ORANGE, YELLOW of Demat Lights
+  - ORANGE, YELLOW, GREEN of rainbow one, to G, B, V of Demat Lights (LOW = ON)
+  - BLUE, VIOLET of rainbow one, through resistors, to Panel A Red, Green Lights
+ 
+ ------
+ Part 2
+ ------
+  
+Wire colors
+
+ Installed:
+
+- Red, Brown: Door Lever
+- Blue, Green: Demat Lever
+- Red, Green; Orange, Blue; Yellow, Violet: Demat Lights +1-; +2-; +3-
+- Yellow, Brown, Violet: Speed Knob
+- Yellow, Green: Panel A Green Light
+- Orange, Brown: Panel A Red Light
+- Orange, Blue: Panel A Warning Light
+- Black, Violet: Right Speaker
+- Blue, Violet: Left Speaker
+- Brown, Black; Red, Orange: Master Reset; Major Mode
+- Green, Black; Yellow, Orange: Lockout Key; Fast Return Switch
+- Red, Red, Green, Brown: Big Square Red Plinth Button (12v light disconnected for now)
+- Red, Orange: Panel B Panel Meter
+- Green, Purple: Panel B Panel Meter Overload Light
+
+ Not installed yet:
+ 
+- Yellow, Green, Blue, Violet: Round Blue Lit Button
+- Blue, Blue, Brown, Black: Blue Triangle Button
+
+- Green, Green, Orange, Violet: Green Triangle Button
+- Blue, Black, Orange, Violet: Blue Triangle  Button #2
+- Red, Red, Yellow, Violet: Red Triangle Button
+- Red, Orange, Yellow: Toggle Switch
+- Red, Violet, Blue: Toggle Switch
+- Red, Brown, Violet: Toggle Switch
+- Yellow, Green, Blue: Toggle Switch
+
+ 
+ ------
+ Part 3
+ ------
+  
+List of active controls
+With functions where known, subject to change.
+Controls are on Panel B unless otherwise noted.
+
+- Console Reset button: wired to brain's actual RESET line: arduino panic button.
+- Console Major Mode button: OFF: TARDIS mode; ON: Rocketship mode.
+- Demat Lever: TOGGLE: start TAKEOFF or LANDING (alternate). Debounce 1-2 sec min, enough to allow ON-OFF or OFF-ON gestures as equivalent to TOGGLE (to allow user to reverse polarity of switch's throw)
+- Demat Lights: bargraph on and off at start of TAKEOFF and LANDING respectively
+- Door Lever: TOGGLE: OPEN DOOR or CLOSE DOOR (alternate). Debounce as per Demat Lever.
+
+- Speed Knob (Panel A): @#@u Ultimate use undecided. Currently controls Panel B Panel Meter and Overload Light
+
+ 
+
+ ------
+ Part 4
+ ------
+  
+Outputs, modes, events, etc.
+
+- TARDIS (Major) Mode: All sounds are from TARDIS soundset
+- Rocketship (Major) Mode: All sounds are from Rocketship soundset
+- TAKEOFF (minor mode): Play takeoff sound; animate Demat lights to ON bargraphwise. THEN go to FLIGHT (minor) mode.
+- LANDING (minor mode): Play landing sound; animate Demat lights to OFF bargraphwise. THEN go to IDLE (minor) mode.
+- IDLE (minor mode): Play idle environmental sound(s)? Blink some blinkenlights?
+- FLIGHT (minor mode): Play in-flight environmental sound(s)? Blink some blinkenlights?
+- OPEN DOOR (event): Play open door sound, then resume current minor mode.
+- CLOSE DOOR (event): Play close door sound, then resume current minor mode.
+
+
+ ------
+ Part 5
+ ------
+ 
+Operation notes
+
+- When connecting sound fx board to computer, it must be mostly disconnected from arduino! Even if arduino is unpowered, fx board's reset line (at least) must be disconnected.
+
+- If audio fx board shows "Found 0 files" and won't play sounds or even adjust volume, yet does show "Adafruit FX Sound Board 11/6/14" startup message: check for accidentally disconnected UG pin (or other wiring problems).
+
+- Sketch is TardisConsoleMega2560.ino
+
+- First phase (door and demat levers, animated demat lights, major modes) complete
+   and working as of version 19, 4/7/2021.
+   
+- Next phase: more controls and lights. Cables to panels A and C.
+
+ ------
+ Part 6
+ ------
+ 
+Theoretical TARDIS Console Controls
+from http://www.tardis.ed.ac.uk/~abr/drwho/tardis/type40/node61.html
+
+
+
+DEMATERIALISATION PANEL
+code 	control/function
+1A 	master dematerialisation control
+1B 	flight termination control
+1C 	power drive control
+1D1 	hover: hovermode
+1D2 	microphone control
+  	hover: X control
+1D3 	free float
+  	hover: Y control
+1D4 	influx power boost
+  	hover: Z control
+1D5 	flight stabilisers
+  	hover: acceleration control
+1D6 	 
+  	hover: D/A selector
+1E 	info: local gravity gauge
+1F 	lever indicator lights
+1G 	info: scientific instruments I
+1H1 	quick flight mode
+1H2 	late coordinate setting
+1H2 	double lock control
+1H4 	astral map scanner mode
+1H5 	antiflux source delimiter
+1H6 	 
+1H7 	 
+1I 	fast return switch/module
+
+
+MASTER CONTROL PANEL
+code 	control/function
+2A 	lever indicator lights
+2B 	meter: power mode
+2C 	meter: UHL target stage
+2D 	master drive switch
+2E1 	lighting control/stun lights
+2E2 	automatic defense network
+2E3 	power boosting control
+2E4 	time scanner
+2E5 	scanner
+2F 	info: scientific instruments II
+2G1 	hostile action displacement system
+2G2 	time scanner bias
+
+
+EXTERIOR MONITOR PANEL
+code 	control/function
+3A 	exterior temperature meter
+3B 	exterior radiation meter
+3C 	radiation meter adjuster
+3D 	scanner control: audio/video scan
+3E 	scanner control: auto/manual scan
+3F 	indicator lights; top left is time path detector
+3G 	info: digital time-orientation read-out
+3H 	time continuum stability meter
+3I 	absolute exterior movement meter ???
+3J 	scanner control: infrascan adjuster
+3K 	scanner control: power-boost scan adjuster
+3L 	scanner control: manual zoom control
+3M 	scanner control: view selector I
+3N 	scanner control: view selector II
+3O 	scanner control: manual focus
+3P 	scanner control: manual aperture
+3Q 	scanner control: volume adjuster
+
+
+NAVIGATIONAL CONTROL PANEL
+code 	control/function
+4A 	controls for setting coordinates
+4B 	UHL level controller
+4C 	coordinate set/reset
+4C-i 	time segment controller
+4D 	navigational systems indicator
+4E 	meter: time flux continuum meter
+4F 	meter: relative velocity (relocity)
+4G 	meter: temporal velocity (telocity
+4H 	meter: time continuum stability meter
+4I 	info: dimensional analyser
+4Y 	control for setting coordinates
+4Z 	control for setting coordinates
+
+
+INFORMATIONAL CONTROLS PANEL
+code 	control/function
+5A 	fluid link boost
+5B 	hover: lock control
+5C 	vortex time tracker
+5D 	meter: power take-up
+5E 	external decontamination function
+5F 	hover: horizontal hold
+5G 	hover: thrust adjustment
+5H 	hover: vertical hold
+5I 	chameleon circuit history viewer
+5J 	automatic door mode
+5K1 	door lock mode selector
+5K2 	door lock mode selector
+5K3 	chameleon circuit mode selector
+5K4 	chameleon circuit mode selector
+5K5 	chameleon circuit advanced mode
+5K6 	stabilise materialisation
+5L 	indicator lights
+5M 	indicator:
+5N 	info: exterior atmospheric scan
+
+
+AUXILIARY SYSTEMS PANEL
+code 	control/function
+6A 	door open/close
+6B 	meter: power bank reserves
+6C 	symbiotic ID panel one
+6D 	symbiotic ID panel two
+6E1 	quick transfer jump
+6E2 	electrify controls
+6F1 	automatic power systems
+6F2 	automatic power cue
+6F3 	artron frequency controller
+6F4 	external light
+6G1 	power reverse-feed
+6G2 	auxiliary power-bank recharge
+6G3 	auxiliary power systems
+6G4 	isomorphic control switch
+H 	raise/lower power octagon
+I 	info: relative engine-movement scan
+
+ Fault Locator Codes
+
+
+Table: Fault Locator Key
+code 	component 	code 	component
+A 	door 	
+B 	exterior
+C 	control room 	
+D 	dimensional bridge
+E 	environment 	
+F 	dematerialisation
+G 	general circuits 	
+H 	hovermode
+I 	interior dimension 	
+J 	???
+K 	linkages 	
+L 	lighting
+M 	outer hull 	
+N 	navigation systems
+O 	guidance systems 	
+P 	power systems
+Q 	indicators 	
+R 	auxiliary equipment
+S 	space-time vortex 	
+T 	time rotor
+U 	switches 	
+V 	central computer
+W 	wiring/circuitry 	
+X 	external appliance
+Y 	central databuss 	
+Z 	special
+
+
+
+Table: Special Z Codes Key
+code 	component 	code 	component
+Z1 	untraceable fault 	
+Z2 	unrecoverable malfunction
+Z3 	internal fault 	
+Z4 	algorithm syntax fault
+Z5 	internal deadlock 	
+Z6 	unknown error
+Z7 	unknown error 	
+Z8 	unknown error
+Z9 	unknown error 	
+Z0 	unknown error
