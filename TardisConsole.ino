@@ -14,7 +14,7 @@
     
 */
 
-#define version_string "version 20261006.001"
+#define version_string "version 20261006.002"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -150,16 +150,18 @@ Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, S
 
 // major mode switch toggles between modes 0 and 1.
 // modes 2+ are disabled; edit here to set the desired active modes as 0 and 1
-#define MAJOR_MODE_ROCKET   0
-#define MAJOR_MODE_DEMO     2
-#define MAJOR_MODE_TARDIS   1
-#define MAJOR_MODE_STARTUP  -1
+#define MAJOR_MODE_ROCKET       0
+#define MAJOR_MODE_DEMO         2
+#define MAJOR_MODE_TARDIS       1
+#define MAJOR_MODE_STARTUP      -1
 
-#define MINOR_MODE_STARTUP  -1
-#define MINOR_MODE_IDLE     0
-#define MINOR_MODE_TAKEOFF  1
-#define MINOR_MODE_FLIGHT   2
-#define MINOR_MODE_LANDING  3
+#define MINOR_MODE_STARTUP      -1
+#define MINOR_MODE_IDLE         0
+#define MINOR_MODE_TAKEOFF      1
+#define MINOR_MODE_FLIGHT       2
+#define MINOR_MODE_LANDING      3
+#define MINOR_MODE_LOCKOUT_KEY  4
+#define MINOR_MODE_LOCKOUT      5
 
 typedef struct {
   int value;
@@ -212,6 +214,10 @@ typedef struct {
   int landing;
   int doors;
   int startup;
+  int lockout_key;
+  int locked_out;
+  int power_up;
+  int power_down;
 } Soundset;
 
 // one per major mode: 0, 1
@@ -219,12 +225,20 @@ Soundset soundset[2] = {
   { .takeoff = SFX_BLASTOFF,
     .landing = SFX_LANDING,
     .doors = SFX_KACHUNK,
-    .startup = SFX_KEYCLIK2
+    .startup = SFX_BOO_OOP, // was SFX_KEYCLIK2,
+    .lockout_key = SFX_6BEEPS,
+    .locked_out = SFX_VIBRATO_PING,
+    .power_up = SFX_RISING_BEEP,
+    .power_down = SFX_LOWPOWER
   },
   { .takeoff = SFX_DEMAT,
     .landing = SFX_REMAT,
     .doors = SFX_DOORS,
-    .startup = SFX_KEYCLIK1
+    .startup = SFX_RISING_BEEP, // was SFX_KEYCLIK1,
+    .lockout_key = SFX_6BEEPS,
+    .locked_out = SFX_VIBRATO_PING,
+    .power_up = SFX_RISING_BEEP,
+    .power_down = SFX_LOWPOWER
   }
 };
 
@@ -333,6 +347,64 @@ void loop() {
 }
 
 // ** support functions
+
+void poll_controls() {
+
+  // ** poll for changed controls
+
+  int value;
+
+  value = digitalRead(switch_door_lever);
+  if (value != TARDIS.door_lever.value) {
+    if (TARDIS.door_lever.value != -1) {
+      TARDIS.door_lever.changed = true;
+    }
+    TARDIS.door_lever.value = value;
+  }
+
+  value = digitalRead(switch_demat_lever);
+  if (value != TARDIS.demat_lever.value) {
+    if (TARDIS.demat_lever.value != -1) {
+      TARDIS.demat_lever.changed = true;
+    }
+    TARDIS.demat_lever.value = value;
+  }
+
+  value = digitalRead(switch_lockout_key);
+  if (value != TARDIS.lockout_key.value) {
+    if (TARDIS.lockout_key.value != -1) {
+      TARDIS.lockout_key.changed = true;
+    }
+    TARDIS.lockout_key.value = value;
+  }
+  
+  value = digitalRead(switch_fast_return);
+  if (value != TARDIS.fast_return.value) {
+    if (TARDIS.fast_return.value != -1) {
+      TARDIS.fast_return.changed = true;
+    }
+    TARDIS.fast_return.value = value;
+  }
+
+  value = digitalRead(switch_plinth_big_square_button);
+  if (value != TARDIS.big_square_button.value) {
+    if (TARDIS.big_square_button.value != -1) {
+      TARDIS.big_square_button.changed = true;
+    }
+    TARDIS.big_square_button.value = value;
+  }
+
+  int raw = analogRead(knob_speed);
+  const float smooth = 0.75;
+  value = TARDIS.speed_knob.value * smooth + raw * (1-smooth);
+  const int slack = 2;
+  if ( abs(value - TARDIS.speed_knob.value) > slack ) {
+    if (TARDIS.speed_knob.value != -1) {
+      TARDIS.speed_knob.changed = true;
+    }
+    TARDIS.speed_knob.value = value;
+  }
+}
 
 #define LFX_DEMAT 1
 #define LFX_REMAT 2
@@ -502,6 +574,7 @@ boolean already_playing = false;
 void loop_tardis() {
 
   uint32_t current_time = millis();
+  int value;
 
   // ** when certain sounds end, minor mode changes.
 
@@ -524,65 +597,32 @@ void loop_tardis() {
           TARDIS.minor_mode = MINOR_MODE_IDLE;
           TARDIS.sound_end_mode_change = false;
           break;
+        case MINOR_MODE_LOCKOUT_KEY:
+          // debounce by checking key status after sound has played
+          value = digitalRead(switch_lockout_key);
+          TARDIS.lockout_key.value = value;
+          TARDIS.lockout_key.changed = false;
+          if (value) {
+            Serial.println("...lockout.");
+            TARDIS.minor_mode = MINOR_MODE_LOCKOUT;
+            soundFX_play(soundset[TARDIS.major_mode].power_down, 
+                          SFX_PRIORITY_REPLACE);
+          } else {
+            Serial.println("...resume.");
+            TARDIS.minor_mode = MINOR_MODE_IDLE;
+            soundFX_play(soundset[TARDIS.major_mode].power_up, 
+                          SFX_PRIORITY_REPLACE);
+          }          
+          TARDIS.sound_end_mode_change = false;
+          break;
       }
     }
   }
 
   // ** poll for changed controls
 
-  int value;
+  poll_controls();
 
-  value = digitalRead(switch_door_lever);
-  if (value != TARDIS.door_lever.value) {
-    if (TARDIS.door_lever.value != -1) {
-      TARDIS.door_lever.changed = true;
-    }
-    TARDIS.door_lever.value = value;
-  }
-
-  value = digitalRead(switch_demat_lever);
-  if (value != TARDIS.demat_lever.value) {
-    if (TARDIS.demat_lever.value != -1) {
-      TARDIS.demat_lever.changed = true;
-    }
-    TARDIS.demat_lever.value = value;
-  }
-
-  value = digitalRead(switch_lockout_key);
-  if (value != TARDIS.lockout_key.value) {
-    if (TARDIS.lockout_key.value != -1) {
-      TARDIS.lockout_key.changed = true;
-    }
-    TARDIS.lockout_key.value = value;
-  }
-  
-  value = digitalRead(switch_fast_return);
-  if (value != TARDIS.fast_return.value) {
-    if (TARDIS.fast_return.value != -1) {
-      TARDIS.fast_return.changed = true;
-    }
-    TARDIS.fast_return.value = value;
-  }
-
-  value = digitalRead(switch_plinth_big_square_button);
-  if (value != TARDIS.big_square_button.value) {
-    if (TARDIS.big_square_button.value != -1) {
-      TARDIS.big_square_button.changed = true;
-    }
-    TARDIS.big_square_button.value = value;
-  }
-
-  int raw = analogRead(knob_speed);
-  const float smooth = 0.75;
-  value = TARDIS.speed_knob.value * smooth + raw * (1-smooth);
-  const int slack = 2;
-  if ( abs(value - TARDIS.speed_knob.value) > slack ) {
-    if (TARDIS.speed_knob.value != -1) {
-      TARDIS.speed_knob.changed = true;
-    }
-    TARDIS.speed_knob.value = value;
-  }
-  
   // ** take action based on control changes
 
   // ("take action" is mostly sounds, lights, and minor_mode transitions)
@@ -623,6 +663,16 @@ void loop_tardis() {
       case MINOR_MODE_LANDING:
         Serial.println("(demat lever changed in landing mode)");
         break;
+      
+      case MINOR_MODE_LOCKOUT:
+        Serial.println("(demat lever changed with lockout key removed)");
+        soundFX_play(soundset[TARDIS.major_mode].locked_out, 
+                      SFX_PRIORITY_REPLACE);
+        break;
+      
+      case MINOR_MODE_LOCKOUT_KEY:
+        Serial.println("(demat lever changed while lockout key in use)");
+        break;
     }
     TARDIS.demat_lever.changed = false;
   }
@@ -632,6 +682,13 @@ void loop_tardis() {
     Serial.println(TARDIS.lockout_key.value);
     // value 1: key removed
     TARDIS.lockout_key.changed = false;
+
+    // debounce: play a sound, then check key status again after it plays
+    TARDIS.minor_mode = MINOR_MODE_LOCKOUT_KEY;
+    TARDIS.sound_end_mode_change = true;
+    soundFX_play(soundset[TARDIS.major_mode].lockout_key, 
+                  SFX_PRIORITY_OPTIONAL);
+    next_sound_check = current_time + SOUND_CHECK_DELAY;
   }
 
   
