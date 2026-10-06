@@ -14,7 +14,7 @@
     
 */
 
-#define version_string "version 20210407.025"
+#define version_string "version 20261006.001"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -191,6 +191,7 @@ typedef struct {
   Control fast_return;
   Control big_square_button;
   Control speed_knob;
+  int power_level;
 } Tardis;
 
 Tardis TARDIS = {
@@ -202,7 +203,8 @@ Tardis TARDIS = {
   .lockout_key = { .value = -1, .changed = false },
   .fast_return = { .value = -1, .changed = false },
   .big_square_button = { .value = -1, .changed = false },
-  .speed_knob = { .value = -1, .changed = false }
+  .speed_knob = { .value = -1, .changed = false },
+  .power_level = 0
 };
 
 typedef struct {
@@ -310,6 +312,7 @@ void setup() {
   }
 }
 
+// ** main loop: poll (and handle) major mode switch; tick current major mode
 
 void loop() {
 
@@ -569,8 +572,11 @@ void loop_tardis() {
     TARDIS.big_square_button.value = value;
   }
 
-  value = analogRead(knob_speed);
-  if ( abs(value - TARDIS.speed_knob.value) > 2 ) {
+  int raw = analogRead(knob_speed);
+  const float smooth = 0.75;
+  value = TARDIS.speed_knob.value * smooth + raw * (1-smooth);
+  const int slack = 2;
+  if ( abs(value - TARDIS.speed_knob.value) > slack ) {
     if (TARDIS.speed_knob.value != -1) {
       TARDIS.speed_knob.changed = true;
     }
@@ -582,7 +588,7 @@ void loop_tardis() {
   // ("take action" is mostly sounds, lights, and minor_mode transitions)
 
   if (TARDIS.door_lever.changed) {
-    Serial.println("Doors.");
+    Serial.println("Doors...");
     soundFX_play(soundset[TARDIS.major_mode].doors, SFX_PRIORITY_OPTIONAL);
     lightFX_play(LFX_DOORS);
     TARDIS.door_lever.changed = false;
@@ -651,24 +657,28 @@ void loop_tardis() {
     const int max_megga_volts = 80; // full scale on (modified) panel meter
     int megga_volts = (int)(value * max_megga_volts);
     // note: "megga" volts were shown on a panel meter in Inferno.
-    analogWrite(panel_B_panel_meter, megga_volts);
-    
-    Serial.print("Speed Knob: ");
-    Serial.println(TARDIS.speed_knob.value);
-    Serial.print("  -> Megga-Volts: ");
-    Serial.println(megga_volts);
-    // note: 255, or 100% pwm, only drives this 100 mA panel meter to 75%.
-    // (expected, since 75 mA is about as much as an arduino pin can drive)
-    // But! With the internal 2.2 ohm resistor (!) replaced with a 10 ohm,
-    // we can reach full scale with just 80 megga_volts. (aka 80/255 pwm)
+    if (TARDIS.power_level != megga_volts) {
 
-    if (megga_volts > (max_megga_volts * 0.6)) {
-      // in the RED ZONE
-      digitalWrite(light_panel_B_overload, LED_ON);
-      //Serial.println("(Total Power overload.)");
-    } else {
-      digitalWrite(light_panel_B_overload, LED_OFF);
-      //Serial.println("(Total Power normal load.)");
+      TARDIS.power_level = megga_volts;
+      analogWrite(panel_B_panel_meter, megga_volts);
+      
+      Serial.print("Speed Knob: ");
+      Serial.print(TARDIS.speed_knob.value);
+      Serial.print("      -> Megga-Volts: ");
+      Serial.println(megga_volts);
+      // note: 255, or 100% pwm, only drives this 100 mA panel meter to 75%.
+      // (expected, since 75 mA is about as much as an arduino pin can drive)
+      // But! With the internal 2.2 ohm resistor (!) replaced with a 10 ohm,
+      // we can reach full scale with just 80 megga_volts. (aka 80/255 pwm)
+
+      if (megga_volts > (max_megga_volts * 0.6)) {
+        // in the RED ZONE
+        digitalWrite(light_panel_B_overload, LED_ON);
+        //Serial.println("(Total Power overload.)");
+      } else {
+        digitalWrite(light_panel_B_overload, LED_OFF);
+        //Serial.println("(Total Power normal load.)");
+      }
     }
     
   }
