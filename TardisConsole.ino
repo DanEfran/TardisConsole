@@ -14,7 +14,7 @@
     
 */
 
-#define version_string "version 20261006.002"
+#define version_string "version 20261006.003"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -136,6 +136,9 @@
 
 // ** other constants
 
+// notice if fast return switch has been stuck on this long
+#define FAST_RETURN_CHECK_DELAY 1000*10
+
 // LEDs are common anode; set cathode LOW-to-glow
 #define LED_OFF HIGH
 #define LED_ON LOW
@@ -155,13 +158,14 @@ Adafruit_Soundboard soundFX_board = Adafruit_Soundboard(&soundFX_serial, NULL, S
 #define MAJOR_MODE_TARDIS       1
 #define MAJOR_MODE_STARTUP      -1
 
-#define MINOR_MODE_STARTUP      -1
-#define MINOR_MODE_IDLE         0
-#define MINOR_MODE_TAKEOFF      1
-#define MINOR_MODE_FLIGHT       2
-#define MINOR_MODE_LANDING      3
-#define MINOR_MODE_LOCKOUT_KEY  4
-#define MINOR_MODE_LOCKOUT      5
+#define MINOR_MODE_STARTUP            -1
+#define MINOR_MODE_IDLE               0
+#define MINOR_MODE_TAKEOFF            1
+#define MINOR_MODE_FLIGHT             2
+#define MINOR_MODE_LANDING            3
+#define MINOR_MODE_LOCKOUT_KEY        4
+#define MINOR_MODE_LOCKOUT            5
+#define MINOR_MODE_WILD_CATASTROPHE   6
 
 typedef struct {
   int value;
@@ -186,6 +190,7 @@ LfxEvent lfxEvents[LFX_EVENTS_MAX];
 typedef struct {
   int major_mode;
   int minor_mode;
+  int previous_minor_mode;
   boolean sound_end_mode_change;
   Control door_lever;
   Control demat_lever;
@@ -199,6 +204,7 @@ typedef struct {
 Tardis TARDIS = {
   .major_mode = MAJOR_MODE_STARTUP,
   .minor_mode = MINOR_MODE_IDLE,
+  .previous_minor_mode = MINOR_MODE_STARTUP,
   .sound_end_mode_change = false,
   .door_lever = { .value = -1, .changed = false },
   .demat_lever = { .value = -1, .changed = false },
@@ -218,6 +224,7 @@ typedef struct {
   int locked_out;
   int power_up;
   int power_down;
+  int emergency_alarm;
 } Soundset;
 
 // one per major mode: 0, 1
@@ -229,7 +236,8 @@ Soundset soundset[2] = {
     .lockout_key = SFX_6BEEPS,
     .locked_out = SFX_VIBRATO_PING,
     .power_up = SFX_RISING_BEEP,
-    .power_down = SFX_LOWPOWER
+    .power_down = SFX_LOWPOWER,
+    .emergency_alarm = SFX_BOOP
   },
   { .takeoff = SFX_DEMAT,
     .landing = SFX_REMAT,
@@ -238,7 +246,8 @@ Soundset soundset[2] = {
     .lockout_key = SFX_6BEEPS,
     .locked_out = SFX_VIBRATO_PING,
     .power_up = SFX_RISING_BEEP,
-    .power_down = SFX_LOWPOWER
+    .power_down = SFX_LOWPOWER,
+    .emergency_alarm = SFX_CLOISTER_1
   }
 };
 
@@ -619,6 +628,41 @@ void loop_tardis() {
     }
   }
 
+  // holding down the Fast Return Switch long enough can also change minor mode.
+
+  static uint32_t next_alarm_chime_time = 0;
+  static uint32_t next_fast_return_check = 0;
+
+  if (current_time > next_fast_return_check) {
+    value = digitalRead(switch_fast_return);
+    TARDIS.fast_return.value = value;
+    TARDIS.fast_return.changed = false;
+
+    next_fast_return_check = current_time + FAST_RETURN_CHECK_DELAY;
+
+    if (TARDIS.minor_mode != MINOR_MODE_WILD_CATASTROPHE) {
+      if (TARDIS.fast_return.value == 0) {
+        // Fast Return switch still pressed after some time has passed. 
+        // TARDIS is hurtling towards Time Zero!
+                  
+        TARDIS.previous_minor_mode = TARDIS.minor_mode;
+        TARDIS.minor_mode = MINOR_MODE_WILD_CATASTROPHE;
+        next_alarm_chime_time = current_time;
+      
+        Serial.println("Fast Return switch stuck or held down.");
+      }
+    }
+  }
+
+  // cloister bell rings over and over in a crisis
+  if ( (TARDIS.minor_mode == MINOR_MODE_WILD_CATASTROPHE) 
+        && (current_time > next_alarm_chime_time) ) {
+      soundFX_play(soundset[TARDIS.major_mode].emergency_alarm, 
+                    SFX_PRIORITY_OPTIONAL);
+      next_alarm_chime_time = current_time + 1000 * 5;
+    
+  }
+
   // ** poll for changed controls
 
   poll_controls();
@@ -639,6 +683,8 @@ void loop_tardis() {
     switch (TARDIS.minor_mode) {
 
       case MINOR_MODE_IDLE:
+      
+        TARDIS.previous_minor_mode = TARDIS.minor_mode;
         TARDIS.minor_mode = MINOR_MODE_TAKEOFF;
         TARDIS.sound_end_mode_change = true;
         Serial.println("Demat...");
@@ -653,6 +699,7 @@ void loop_tardis() {
 
       case MINOR_MODE_FLIGHT:
         Serial.println("Remat...");
+        TARDIS.previous_minor_mode = TARDIS.minor_mode;
         TARDIS.minor_mode = MINOR_MODE_LANDING;
         TARDIS.sound_end_mode_change = true;
         lightFX_play(LFX_REMAT);
@@ -684,6 +731,7 @@ void loop_tardis() {
     TARDIS.lockout_key.changed = false;
 
     // debounce: play a sound, then check key status again after it plays
+    TARDIS.previous_minor_mode = TARDIS.minor_mode;
     TARDIS.minor_mode = MINOR_MODE_LOCKOUT_KEY;
     TARDIS.sound_end_mode_change = true;
     soundFX_play(soundset[TARDIS.major_mode].lockout_key, 
@@ -695,8 +743,17 @@ void loop_tardis() {
   if (TARDIS.fast_return.changed) {
     Serial.print("Fast Return: ");
     Serial.println(TARDIS.fast_return.value);
-    // value 0: fast return button pressed (perhaps stuck)
     TARDIS.fast_return.changed = false;
+
+    if (TARDIS.fast_return.value == 0) {
+      // value 0: fast return button pressed (perhaps stuck...check later)
+      next_fast_return_check = current_time + FAST_RETURN_CHECK_DELAY;
+    } else {
+      if (TARDIS.minor_mode == MINOR_MODE_WILD_CATASTROPHE) {
+        Serial.println("Wild Catastrophe averted: Fast Return turned off.");
+        TARDIS.minor_mode = TARDIS.previous_minor_mode;
+      }
+    }
   }
 
   if (TARDIS.big_square_button.changed) {
