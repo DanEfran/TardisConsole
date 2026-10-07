@@ -14,7 +14,7 @@
     
 */
 
-#define version_string "version 20261006.003"
+#define version_string "version 20261006.004"
 
 #include <SoftwareSerial.h>
 #include "Adafruit_Soundboard.h"
@@ -643,7 +643,7 @@ void loop_tardis() {
     if (TARDIS.minor_mode != MINOR_MODE_WILD_CATASTROPHE) {
       if (TARDIS.fast_return.value == 0) {
         // Fast Return switch still pressed after some time has passed. 
-        // TARDIS is hurtling towards Time Zero!
+        // TARDIS is hurtling towards Time Zero! (see "The Edge of Destruction")
                   
         TARDIS.previous_minor_mode = TARDIS.minor_mode;
         TARDIS.minor_mode = MINOR_MODE_WILD_CATASTROPHE;
@@ -659,6 +659,12 @@ void loop_tardis() {
         && (current_time > next_alarm_chime_time) ) {
       soundFX_play(soundset[TARDIS.major_mode].emergency_alarm, 
                     SFX_PRIORITY_OPTIONAL);
+
+      lightFX_addEvent(light_panel_A_red, LED_ON, current_time + 0, 
+                    LFX_PRIORITY_REPLACE);
+      lightFX_addEvent(light_panel_A_red, LED_OFF, current_time + 1000, 
+                    LFX_PRIORITY_MERGE);
+
       next_alarm_chime_time = current_time + 1000 * 5;
     
   }
@@ -770,7 +776,7 @@ void loop_tardis() {
     float value = 1.0 - (TARDIS.speed_knob.value / 1024.0);
     const int max_megga_volts = 80; // full scale on (modified) panel meter
     int megga_volts = (int)(value * max_megga_volts);
-    // note: "megga" volts were shown on a panel meter in Inferno.
+    // note: "megga" volts were shown on a panel meter in "Inferno".
     if (TARDIS.power_level != megga_volts) {
 
       TARDIS.power_level = megga_volts;
